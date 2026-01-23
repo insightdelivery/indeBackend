@@ -30,7 +30,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://admin.inde.kr",
     "https://www.inde.kr",
 ]
-ROOT_URLCONF = "config.main_urls"
+ROOT_URLCONF = "api.urls"
 
 # 보안 설정
 SECURE_SSL_REDIRECT = True
