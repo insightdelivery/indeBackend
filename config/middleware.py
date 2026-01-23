@@ -18,7 +18,14 @@ class CurrentSiteMiddleware(MiddlewareMixin):
     
     def process_request(self, request):
         # Host 헤더에서 도메인 추출
+        # nginx/로드밸런서 뒤에서 실행 시 X-Forwarded-Host 헤더도 확인
         host = request.get_host()
+        
+        # X-Forwarded-Host 헤더가 있으면 우선 사용 (프록시 환경)
+        forwarded_host = request.META.get('HTTP_X_FORWARDED_HOST')
+        if forwarded_host:
+            # 여러 호스트가 쉼표로 구분되어 있을 수 있음 (첫 번째 것 사용)
+            host = forwarded_host.split(',')[0].strip()
         
         # SITE_MAP에서 매칭되는 사이트 정보 찾기
         site_info = SITE_MAP.get(host)
