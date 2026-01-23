@@ -4,7 +4,7 @@
 """
 SITE_MAP = {
     # 프로덕션 도메인
-    "admin_api.inde.kr": {
+    "admin-api.inde.kr": {
         "slug": "admin_api",
         "urlconf": "sites.admin_api.urls",
         "cors": ["https://admin.inde.kr"],

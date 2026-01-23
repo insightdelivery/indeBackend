@@ -23,7 +23,7 @@ DATABASES['default'].update({
 # 프로덕션 환경 도메인
 ALLOWED_HOSTS = [
     'api.inde.kr',
-    'admin_api.inde.kr',  # 관리자 API 도메인
+    'admin-api.inde.kr',  # 관리자 API 도메인
 ]
 
 # CORS 설정 (프로덕션)

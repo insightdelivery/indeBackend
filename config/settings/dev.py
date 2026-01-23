@@ -22,7 +22,7 @@ DATABASES['default'].update({
 
 # 개발 환경 도메인
 ALLOWED_HOSTS = [
-    'admin_api.inde.kr',
+    'admin-api.inde.kr',
     'api.inde.kr',
     'localhost',
     '127.0.0.1',
