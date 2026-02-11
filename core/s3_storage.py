@@ -50,6 +50,9 @@ class S3Storage:
         if not self.bucket_name:
             raise ValueError("AWS_STORAGE_BUCKET_NAME이 설정되어야 합니다.")
         
+        # 버킷 정보 로깅 (프로덕션 디버깅용)
+        logger.info(f"S3 Storage 초기화 완료 - 버킷: {self.bucket_name}, 리전: {self.aws_region}")
+        
         # S3 클라이언트 생성 (Config를 사용하여 리전과 서명 버전 명시)
         from botocore.config import Config
         config = Config(
@@ -81,27 +84,37 @@ class S3Storage:
             # Django settings에서 먼저 확인
             explicit_bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None) or os.getenv('AWS_STORAGE_BUCKET_NAME')
             if explicit_bucket:
+                logger.info(f"명시적 버킷 이름 사용: {explicit_bucket}")
                 return explicit_bucket
             
             # DEBUG 모드에 따라 버킷 구분
+            django_debug = os.getenv('DJANGO_DEBUG', '0')
+            settings_debug = getattr(settings, 'DEBUG', True)
             is_production = (
-                os.getenv('DJANGO_DEBUG', '0') == '0' or 
-                not getattr(settings, 'DEBUG', True)
+                django_debug == '0' or 
+                not settings_debug
             )
+            
+            logger.info(f"환경 판단 - DJANGO_DEBUG: {django_debug}, settings.DEBUG: {settings_debug}, is_production: {is_production}")
             
             if is_production:
                 bucket_name = (
                     getattr(settings, 'AWS_STORAGE_BUCKET_NAME_PRODUCTION', None) or 
                     os.getenv('AWS_STORAGE_BUCKET_NAME_PRODUCTION', 'inde-production')
                 )
+                logger.info(f"프로덕션 버킷 선택: {bucket_name}")
             else:
                 bucket_name = (
                     getattr(settings, 'AWS_STORAGE_BUCKET_NAME_DEVELOPMENT', None) or 
                     os.getenv('AWS_STORAGE_BUCKET_NAME_DEVELOPMENT', 'inde-develope')
                 )
+                logger.info(f"개발 버킷 선택: {bucket_name}")
             
             return bucket_name
-        except Exception:
+        except Exception as e:
+            logger.error(f"버킷 이름 가져오기 실패: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             # Django가 로드되지 않은 경우 환경 변수에서 직접 가져오기
             explicit_bucket = os.getenv('AWS_STORAGE_BUCKET_NAME')
             if explicit_bucket:
@@ -156,6 +169,8 @@ class S3Storage:
             # 파일을 처음으로 되돌림 (이미 읽힌 경우 대비)
             file_obj.seek(0)
             
+            logger.info(f"S3 업로드 시도 - 버킷: {self.bucket_name}, 키: {key}, 크기: {file_obj.getvalue().__len__() if hasattr(file_obj, 'getvalue') else 'unknown'} bytes")
+            
             self.s3_client.upload_fileobj(
                 file_obj,
                 self.bucket_name,
@@ -171,8 +186,13 @@ class S3Storage:
             logger.error("AWS 인증 정보가 없습니다.")
             raise ValueError("AWS 인증 정보가 설정되지 않았습니다.")
         except ClientError as e:
-            logger.error(f"S3 업로드 실패: {e}")
-            raise Exception(f"파일 업로드 실패: {str(e)}")
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_message = e.response.get('Error', {}).get('Message', str(e))
+            logger.error(f"S3 업로드 실패 - 버킷: {self.bucket_name}, 키: {key}, 에러 코드: {error_code}, 메시지: {error_message}")
+            logger.error(f"전체 에러 응답: {e.response}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise Exception(f"파일 업로드 실패 (버킷: {self.bucket_name}, 키: {key}): {error_code} - {error_message}")
     
     def upload_file_from_path(
         self,

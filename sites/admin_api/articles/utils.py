@@ -112,6 +112,7 @@ def upload_base64_image_to_s3(
         # S3에 업로드
         s3_storage = get_s3_storage()
         file_obj = BytesIO(image_bytes)
+        logger.info(f"이미지 업로드 시작 - article_id: {article_id}, image_type: {image_type}, s3_key: {s3_key}, 크기: {len(image_bytes)} bytes")
         url = s3_storage.upload_file(
             file_obj=file_obj,
             key=s3_key,
@@ -126,7 +127,9 @@ def upload_base64_image_to_s3(
         return url
         
     except Exception as e:
-        logger.error(f"이미지 업로드 실패: {e}")
+        logger.error(f"이미지 업로드 실패 - article_id: {article_id}, image_type: {image_type}, s3_key: {s3_key}, 에러: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return None
 
 
