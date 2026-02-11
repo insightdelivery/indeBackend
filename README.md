@@ -48,7 +48,24 @@ pip install -r requirements.txt
 
 ### 3. 환경 변수 설정
 
-각 환경별 `.env` 파일을 생성합니다:
+환경 변수 파일 구조:
+
+```
+env/
+├── .env              # 메인 환경 변수 파일 (ENV_MODE 설정)
+├── .env.local        # 로컬 환경 변수 파일
+└── .env.production   # 프로덕션 환경 변수 파일
+```
+
+**env/.env** 파일 생성 (메인 환경 변수 파일):
+
+```bash
+# env/.env
+# 환경 모드 설정 (local 또는 production)
+ENV_MODE=local
+```
+
+**env/.env.local** 파일 생성 (로컬 환경):
 
 ```bash
 # env/.env.local
@@ -63,7 +80,43 @@ DB_HOST=127.0.0.1
 DB_PORT=3306
 
 JWT_SECRET_KEY=your-jwt-secret-key
+
+# AWS S3 설정
+AWS_ACCESS_KEY_ID=your-aws-access-key-id
+AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
+AWS_S3_REGION_NAME=ap-northeast-2
+AWS_STORAGE_BUCKET_NAME_DEVELOPMENT=inde-develope
+AWS_STORAGE_BUCKET_NAME_PRODUCTION=inde-production
 ```
+
+**env/.env.production** 파일 생성 (프로덕션 환경):
+
+```bash
+# env/.env.production
+DJANGO_SECRET_KEY=your-secret-key
+DJANGO_DEBUG=0
+DJANGO_SETTINGS_MODULE=config.settings.prod
+
+DB_NAME=inde
+DB_USER=inde
+DB_PASSWORD=your-production-password
+DB_HOST=127.0.0.1
+DB_PORT=3306
+
+JWT_SECRET_KEY=your-jwt-secret-key
+
+# AWS S3 설정
+AWS_ACCESS_KEY_ID=your-aws-access-key-id
+AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
+AWS_S3_REGION_NAME=ap-northeast-2
+AWS_STORAGE_BUCKET_NAME_DEVELOPMENT=inde-develope
+AWS_STORAGE_BUCKET_NAME_PRODUCTION=inde-production
+```
+
+**로드 순서:**
+1. 먼저 `env/.env` 파일을 로드하여 `ENV_MODE` 값을 확인
+2. `ENV_MODE=local`이면 `env/.env.local` 로드
+3. `ENV_MODE=production`이면 `env/.env.production` 로드
 
 ## 실행
 

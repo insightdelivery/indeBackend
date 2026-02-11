@@ -5,6 +5,7 @@ S3 설정 확인 명령어
 """
 from django.core.management.base import BaseCommand
 from django.conf import settings
+from pathlib import Path
 import os
 from core.s3_storage import get_s3_storage
 
@@ -13,6 +14,41 @@ class Command(BaseCommand):
     help = 'S3 설정 및 버킷 정보 확인'
 
     def handle(self, *args, **options):
+        # env/.env 파일의 ENV_MODE에 따라 적절한 .env 파일 로드
+        base_dir = Path(settings.BASE_DIR) if hasattr(settings, 'BASE_DIR') else Path(__file__).resolve().parents[3]
+        
+        from dotenv import load_dotenv
+        
+        # 1. 먼저 메인 .env 파일 로드하여 ENV_MODE 확인
+        main_env_path = base_dir / 'env' / '.env'
+        if main_env_path.exists():
+            load_dotenv(main_env_path)
+            self.stdout.write(f"✅ 메인 환경 변수 파일 로드: {main_env_path}")
+        else:
+            self.stdout.write(self.style.WARNING(f"⚠️  메인 환경 변수 파일을 찾을 수 없습니다: {main_env_path}"))
+        
+        # 2. ENV_MODE 확인
+        env_mode = os.getenv('ENV_MODE', 'local').lower()
+        self.stdout.write(f"ENV_MODE: {env_mode}")
+        
+        # 3. ENV_MODE에 따라 적절한 환경 변수 파일 로드
+        if env_mode == 'production':
+            env_file_path = base_dir / 'env' / '.env.production'
+            env_name = 'production'
+        else:  # local 또는 기본값
+            env_file_path = base_dir / 'env' / '.env.local'
+            env_name = 'local'
+        
+        if env_file_path.exists():
+            load_dotenv(env_file_path, override=True)  # override=True로 메인 .env의 값을 덮어씀
+            self.stdout.write(f"✅ {env_name} 환경 변수 파일 로드: {env_file_path}")
+        else:
+            self.stdout.write(self.style.WARNING(f"⚠️  {env_name} 환경 변수 파일을 찾을 수 없습니다: {env_file_path}"))
+        
+        # 설정 모듈 확인
+        settings_module = os.getenv('DJANGO_SETTINGS_MODULE', 'config.settings.local')
+        self.stdout.write(f"현재 설정 모듈: {settings_module}")
+        
         self.stdout.write("=" * 60)
         self.stdout.write("S3 설정 확인")
         self.stdout.write("=" * 60)
@@ -28,9 +64,41 @@ class Command(BaseCommand):
         self.stdout.write(f"settings.DEBUG: {settings_debug}")
         self.stdout.write(f"is_production: {is_production}")
         
-        self.stdout.write(f"\nAWS_ACCESS_KEY_ID: {'설정됨' if os.getenv('AWS_ACCESS_KEY_ID') else '❌ 미설정'}")
-        self.stdout.write(f"AWS_SECRET_ACCESS_KEY: {'설정됨' if os.getenv('AWS_SECRET_ACCESS_KEY') else '❌ 미설정'}")
+        aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
+        aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+        
+        self.stdout.write(f"\nAWS_ACCESS_KEY_ID: {'✅ 설정됨' if aws_access_key else '❌ 미설정'}")
+        self.stdout.write(f"AWS_SECRET_ACCESS_KEY: {'✅ 설정됨' if aws_secret_key else '❌ 미설정'}")
         self.stdout.write(f"AWS_S3_REGION_NAME: {os.getenv('AWS_S3_REGION_NAME', 'ap-northeast-2')}")
+        
+        # 환경 변수 파일 경로 확인
+        self.stdout.write(f"\n환경 변수 파일 경로:")
+        self.stdout.write(f"  .env.production: {env_prod_path}")
+        self.stdout.write(f"  파일 존재: {'✅ 있음' if env_prod_path.exists() else '❌ 없음'}")
+        
+        if not aws_access_key or not aws_secret_key:
+            self.stdout.write(self.style.ERROR("\n❌ AWS 인증 정보가 설정되지 않았습니다."))
+            self.stdout.write(f"환경 변수 파일을 확인하세요: {env_file_path}")
+            if env_file_path.exists():
+                self.stdout.write("파일 내용 확인:")
+                try:
+                    with open(env_file_path, 'r') as f:
+                        lines = f.readlines()
+                        aws_lines = [line for line in lines if 'AWS' in line and not line.strip().startswith('#')]
+                        if aws_lines:
+                            for line in aws_lines:
+                                # 값은 마스킹
+                                if '=' in line:
+                                    key, value = line.split('=', 1)
+                                    masked_value = value[:3] + '***' if len(value.strip()) > 3 else '***'
+                                    self.stdout.write(f"  {key.strip()}={masked_value.strip()}")
+                                else:
+                                    self.stdout.write(f"  {line.strip()}")
+                        else:
+                            self.stdout.write("  AWS 관련 환경 변수가 파일에 없습니다.")
+                except Exception as e:
+                    self.stdout.write(f"  파일 읽기 실패: {e}")
+            return
         
         # 버킷 설정 확인
         self.stdout.write("\n[2] 버킷 설정 확인")

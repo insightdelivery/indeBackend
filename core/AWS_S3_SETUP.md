@@ -40,7 +40,35 @@
 
 ## 환경 변수 설정 방법
 
+### 환경 변수 파일 구조
+
+환경 변수는 다음 구조로 관리됩니다:
+
+```
+env/
+├── .env              # 메인 환경 변수 파일 (ENV_MODE 설정)
+├── .env.local        # 로컬 환경 변수 파일
+└── .env.production   # 프로덕션 환경 변수 파일
+```
+
+**로드 순서:**
+1. 먼저 `env/.env` 파일을 로드하여 `ENV_MODE` 값을 확인
+2. `ENV_MODE=local`이면 `env/.env.local` 로드
+3. `ENV_MODE=production`이면 `env/.env.production` 로드
+
+### 메인 환경 변수 파일 (env/.env)
+
+```env
+# 환경 모드 설정 (local 또는 production)
+ENV_MODE=local
+
+# 공통 환경 변수 (선택)
+# ENV_MODE에 따라 .env.local 또는 .env.production이 로드됨
+```
+
 ### Local 환경 (env/.env.local)
+
+`env/.env` 파일에서 `ENV_MODE=local`로 설정된 경우 이 파일이 로드됩니다.
 
 ```env
 # AWS S3 설정
@@ -54,6 +82,8 @@ AWS_STORAGE_BUCKET_NAME_PRODUCTION=inde-production
 ```
 
 ### Production 환경 (env/.env.production)
+
+`env/.env` 파일에서 `ENV_MODE=production`으로 설정된 경우 이 파일이 로드됩니다.
 
 ```env
 # AWS S3 설정
