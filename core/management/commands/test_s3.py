@@ -35,7 +35,7 @@ class Command(BaseCommand):
         
         if not aws_access_key or not aws_secret_key:
             self.stdout.write(self.style.ERROR("\n❌ AWS 인증 정보가 설정되지 않았습니다."))
-            self.stdout.write("env/local/.env 파일에 AWS_ACCESS_KEY_ID와 AWS_SECRET_ACCESS_KEY를 설정해주세요.")
+            self.stdout.write("env/.env.local 파일에 AWS_ACCESS_KEY_ID와 AWS_SECRET_ACCESS_KEY를 설정해주세요.")
             return
         
         # S3 Storage 인스턴스 생성

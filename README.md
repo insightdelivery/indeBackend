@@ -51,7 +51,7 @@ pip install -r requirements.txt
 각 환경별 `.env` 파일을 생성합니다:
 
 ```bash
-# env/local/.env
+# env/.env.local
 DJANGO_SECRET_KEY=your-secret-key
 DJANGO_DEBUG=1
 DJANGO_SETTINGS_MODULE=config.settings.local

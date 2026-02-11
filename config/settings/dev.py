@@ -3,11 +3,11 @@ from .base import *  # noqa: F403
 DEBUG = True
 
 # 개발 환경 설정
-# .env 파일은 env/dev/.env 경로에서 로드
+# .env 파일은 env/.env.dev 경로에서 로드
 from dotenv import load_dotenv
 import os
 
-env_path = os.path.join(BASE_DIR, 'env', 'dev', '.env')
+env_path = os.path.join(BASE_DIR, 'env', '.env.dev')
 if os.path.exists(env_path):
     load_dotenv(env_path)
 

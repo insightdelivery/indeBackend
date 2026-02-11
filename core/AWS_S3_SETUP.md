@@ -40,7 +40,7 @@
 
 ## 환경 변수 설정 방법
 
-### Local 환경 (env/local/.env)
+### Local 환경 (env/.env.local)
 
 ```env
 # AWS S3 설정

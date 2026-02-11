@@ -5,11 +5,11 @@ DEBUG = True
 ALLOWED_HOSTS = ["localhost", "127.0.0.1", "localhost:8000", "localhost:8001", "127.0.0.1:8000", "127.0.0.1:8001"]
 
 # 로컬 개발 환경 설정
-# .env 파일은 env/local/.env 경로에서 로드 (python-dotenv 사용)
+# .env 파일은 env/.env.local 경로에서 로드 (python-dotenv 사용)
 from dotenv import load_dotenv
 import os
 
-env_path = os.path.join(BASE_DIR, 'env', 'local', '.env')
+env_path = os.path.join(BASE_DIR, 'env', '.env.local')
 if os.path.exists(env_path):
     load_dotenv(env_path)
 
