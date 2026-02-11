@@ -8,8 +8,11 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
 from django.core.paginator import Paginator
 from datetime import datetime
+import logging
 
 from sites.admin_api.articles.models import Article
+
+logger = logging.getLogger(__name__)
 from sites.admin_api.articles.serializers import (
     ArticleSerializer,
     ArticleListSerializer,
@@ -214,12 +217,20 @@ class ArticleDetailView(APIView):
             if old_thumbnail:
                 old_thumbnail_key = S3Storage.extract_key_from_url(old_thumbnail)
             
-            # base64 썸네일인 경우 update_data에서 제거 (나중에 S3 업로드 후 저장)
-            # URL인 경우만 update_data에 포함
-            new_thumbnail = update_data.get('thumbnail', '')
-            if new_thumbnail and new_thumbnail.startswith('data:image'):
-                # base64 데이터는 나중에 처리하므로 임시로 기존 값 유지
-                update_data['thumbnail'] = old_thumbnail if old_thumbnail else None
+            # 썸네일 처리: base64 데이터는 나중에 S3 업로드 후 저장하므로
+            # 시리얼라이저 검증을 위해 임시로 처리
+            # request.data에서 직접 가져오기 (update_data는 나중에 수정될 수 있음)
+            thumbnail_from_request = request.data.get('thumbnail')
+            
+            # 썸네일이 명시적으로 전송된 경우만 처리
+            if 'thumbnail' in request.data:
+                if thumbnail_from_request and thumbnail_from_request.startswith('data:image'):
+                    # base64 데이터는 나중에 처리하므로 임시로 기존 값 유지 (시리얼라이저 검증 통과용)
+                    update_data['thumbnail'] = old_thumbnail if old_thumbnail else None
+                elif thumbnail_from_request == '' or thumbnail_from_request is None:
+                    # 빈 문자열이거나 None인 경우 삭제로 처리 (시리얼라이저 검증 통과용)
+                    update_data['thumbnail'] = None
+                # URL인 경우는 그대로 유지 (update_data에 이미 포함됨)
             
             serializer = ArticleUpdateSerializer(article, data=update_data, partial=False)
             
@@ -265,21 +276,71 @@ class ArticleDetailView(APIView):
             
             # 썸네일을 S3에 업로드 (변경된 경우에만)
             # request.data에서 원본 thumbnail 값 가져오기 (base64 데이터일 수 있음)
-            original_thumbnail = request.data.get('thumbnail')
-            
-            # 썸네일이 전송되지 않았거나 None/빈 문자열이면 업데이트하지 않음
-            if original_thumbnail is not None and original_thumbnail != '':
+            # 'thumbnail' 키가 request.data에 있는지 확인 (프론트엔드에서 명시적으로 보낸 경우)
+            logger.info(f"썸네일 업데이트 체크. request.data에 'thumbnail' 키 존재: {'thumbnail' in request.data}")
+            if 'thumbnail' in request.data:
+                original_thumbnail = request.data.get('thumbnail')
+                logger.info(f"썸네일 데이터 받음. 길이: {len(original_thumbnail) if original_thumbnail else 0}, 시작: {original_thumbnail[:50] if original_thumbnail else 'None'}...")
+                
+                # 썸네일이 빈 문자열이거나 None인 경우 삭제
+                if original_thumbnail is None or original_thumbnail == '':
+                    # 썸네일 삭제
+                    if old_thumbnail_key:
+                        s3_storage = get_s3_storage()
+                        s3_storage.delete_file(old_thumbnail_key)
+                    article.thumbnail = None
+                    article.save(update_fields=['thumbnail'])
                 # 썸네일이 실제로 변경된 경우에만 처리
-                if original_thumbnail != old_thumbnail:
-                    thumbnail_url = upload_thumbnail_to_s3(original_thumbnail, article.id)
-                    if thumbnail_url:
-                        article.thumbnail = thumbnail_url
-                        article.save(update_fields=['thumbnail'])
-                        
-                        # 기존 썸네일 삭제
-                        if old_thumbnail_key:
-                            s3_storage = get_s3_storage()
-                            s3_storage.delete_file(old_thumbnail_key)
+                # base64 데이터이거나, URL이지만 기존 URL과 다른 경우
+                else:
+                    logger.info(f"썸네일 업데이트 처리 시작. original_thumbnail 시작: {original_thumbnail[:50] if original_thumbnail else 'None'}..., old_thumbnail: {old_thumbnail[:50] if old_thumbnail else 'None'}...")
+                    
+                    # base64 데이터인 경우 S3에 업로드
+                    if original_thumbnail.startswith('data:image'):
+                        logger.info("base64 썸네일 데이터를 S3에 업로드합니다.")
+                        thumbnail_url = upload_thumbnail_to_s3(original_thumbnail, article.id)
+                        if thumbnail_url:
+                            logger.info(f"썸네일 업로드 성공. URL: {thumbnail_url}")
+                            article.thumbnail = thumbnail_url
+                            article.save(update_fields=['thumbnail'])
+                            
+                            # 기존 썸네일 삭제 (새로 업로드한 썸네일과 다른 키인 경우에만)
+                            if old_thumbnail_key:
+                                # 새로 업로드한 썸네일의 키 추출
+                                new_thumbnail_key = S3Storage.extract_key_from_url(thumbnail_url)
+                                logger.info(f"기존 썸네일 키: {old_thumbnail_key}, 새 썸네일 키: {new_thumbnail_key}")
+                                
+                                # 기존 썸네일과 새 썸네일이 다른 경우에만 삭제
+                                if old_thumbnail_key != new_thumbnail_key:
+                                    s3_storage = get_s3_storage()
+                                    try:
+                                        s3_storage.delete_file(old_thumbnail_key)
+                                        logger.info(f"기존 썸네일 삭제 성공: {old_thumbnail_key}")
+                                    except Exception as e:
+                                        logger.error(f"기존 썸네일 삭제 실패: {e}")
+                                else:
+                                    logger.info(f"기존 썸네일과 새 썸네일이 동일한 키이므로 삭제하지 않습니다: {old_thumbnail_key}")
+                        else:
+                            logger.error("썸네일 업로드 실패: upload_thumbnail_to_s3가 None을 반환했습니다.")
+                    # URL인 경우 (이미 S3 URL이거나 다른 URL)
+                    else:
+                        # 기존 썸네일과 다른 URL인 경우에만 업데이트
+                        if original_thumbnail != old_thumbnail:
+                            logger.info(f"썸네일 URL 업데이트: {original_thumbnail}")
+                            article.thumbnail = original_thumbnail
+                            article.save(update_fields=['thumbnail'])
+                            
+                            # 기존 썸네일이 S3 URL이었고, 새로운 URL이 다른 S3 URL인 경우 삭제
+                            if old_thumbnail_key and old_thumbnail and old_thumbnail.startswith('https://') and 's3' in old_thumbnail:
+                                # 새로운 URL도 S3 URL이고 기존 키와 다른 경우에만 삭제
+                                new_thumbnail_key = S3Storage.extract_key_from_url(original_thumbnail) if original_thumbnail.startswith('https://') and 's3' in original_thumbnail else None
+                                if new_thumbnail_key and new_thumbnail_key != old_thumbnail_key:
+                                    s3_storage = get_s3_storage()
+                                    try:
+                                        s3_storage.delete_file(old_thumbnail_key)
+                                        logger.info(f"기존 썸네일 삭제 성공: {old_thumbnail_key}")
+                                    except Exception as e:
+                                        logger.error(f"기존 썸네일 삭제 실패: {e}")
             
             # 결과 시리얼라이저
             result_serializer = ArticleSerializer(article)
@@ -374,31 +435,46 @@ class ArticleCreateView(APIView):
             validated_data = serializer.validated_data.copy()
             content = validated_data.get('content', '')
             # 원본 request.data에서 thumbnail 가져오기 (base64 데이터일 수 있음)
-            thumbnail_data_from_request = request.data.get('thumbnail', '')
+            # 'thumbnail' 키가 있는지 확인 (프론트엔드에서 명시적으로 보낸 경우)
+            thumbnail_data_from_request = None
+            if 'thumbnail' in request.data:
+                thumbnail_data_from_request = request.data.get('thumbnail')
+                logger.info(f"아티클 등록 시 썸네일 데이터 받음. 길이: {len(thumbnail_data_from_request) if thumbnail_data_from_request else 0}, 시작: {thumbnail_data_from_request[:50] if thumbnail_data_from_request else 'None'}...")
             
             # base64 썸네일인 경우 validated_data에서 제거 (나중에 S3 업로드 후 저장)
             # URL인 경우만 validated_data에 포함
             if thumbnail_data_from_request and thumbnail_data_from_request.startswith('data:image'):
                 validated_data['thumbnail'] = None  # base64는 나중에 처리
+            elif thumbnail_data_from_request:
+                validated_data['thumbnail'] = thumbnail_data_from_request  # URL인 경우
             else:
-                validated_data['thumbnail'] = thumbnail_data_from_request if thumbnail_data_from_request else None
+                validated_data['thumbnail'] = None  # 썸네일이 없는 경우
             
             # 아티클 생성
             article = Article.objects.create(**validated_data)
+            logger.info(f"아티클 생성 완료. ID: {article.id}")
             
             # 본문의 base64 이미지를 S3 URL로 교체
             if content:
+                logger.info(f"본문 이미지 처리 시작. content 길이: {len(content)}")
                 new_content, uploaded_keys = replace_base64_images_with_s3_urls(content, article.id)
                 if new_content != content:
                     article.content = new_content
                     article.save(update_fields=['content'])
+                    logger.info(f"본문 이미지 업로드 완료. 업로드된 이미지 수: {len(uploaded_keys)}")
             
             # 썸네일을 S3에 업로드 (원본 request.data에서 가져옴)
             if thumbnail_data_from_request:
+                logger.info(f"아티클 등록 시 썸네일 업로드 시작. article_id: {article.id}, thumbnail_data 길이: {len(thumbnail_data_from_request)}")
                 thumbnail_url = upload_thumbnail_to_s3(thumbnail_data_from_request, article.id)
                 if thumbnail_url:
+                    logger.info(f"썸네일 업로드 성공. URL: {thumbnail_url}")
                     article.thumbnail = thumbnail_url
                     article.save(update_fields=['thumbnail'])
+                else:
+                    logger.error(f"썸네일 업로드 실패: upload_thumbnail_to_s3가 None을 반환했습니다.")
+            else:
+                logger.info("썸네일 데이터가 없어 업로드를 건너뜁니다.")
             
             # 결과 시리얼라이저
             result_serializer = ArticleSerializer(article)

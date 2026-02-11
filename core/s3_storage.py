@@ -365,7 +365,7 @@ class S3Storage:
         S3 URL에서 파일 키 추출
         
         Args:
-            url: S3 파일 URL
+            url: S3 파일 URL (Presigned URL 포함)
         
         Returns:
             파일 키 또는 None
@@ -375,9 +375,12 @@ class S3Storage:
             # 1. Virtual Host Style: https://bucket.s3.region.amazonaws.com/key
             # 2. Path Style (endpoint_url 사용시): https://s3.region.amazonaws.com/bucket/key
             # 3. Custom Domain: https://custom-domain.com/key
+            # 4. Presigned URL: 위 형식 + ?X-Amz-Algorithm=... (쿼리 파라미터)
             
             from urllib.parse import urlparse, unquote
-            parsed = urlparse(url)
+            # 쿼리 파라미터 제거 (Presigned URL 처리)
+            url_without_query = url.split('?')[0]
+            parsed = urlparse(url_without_query)
             
             path = parsed.path.lstrip('/')
             path = unquote(path)
@@ -389,9 +392,16 @@ class S3Storage:
                 if len(parts) > 1:
                     # 첫 번째 부분은 버킷 이름이므로 제외하고 키만 반환
                     return parts[1]
-                
+            
+            # Virtual Host Style URL 처리
+            # 예: bucket.s3.region.amazonaws.com/article/...
+            if '.s3.' in parsed.netloc:
+                # path가 이미 키이므로 그대로 반환
+                return path if path else None
+            
             return path if path else None
-        except Exception:
+        except Exception as e:
+            logger.error(f"URL에서 키 추출 실패: {url}, 에러: {e}")
             return None
 
 

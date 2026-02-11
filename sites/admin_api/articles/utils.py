@@ -195,21 +195,27 @@ def upload_thumbnail_to_s3(thumbnail_data: str, article_id: int) -> Optional[str
     Returns:
         업로드된 썸네일의 S3 URL 또는 None (이미 URL인 경우 그대로 반환)
     """
+    logger.info(f"upload_thumbnail_to_s3 호출됨. article_id: {article_id}, thumbnail_data 길이: {len(thumbnail_data) if thumbnail_data else 0}")
+    
     if not thumbnail_data:
+        logger.warning("썸네일 데이터가 없습니다.")
         return None
     
     # 이미 URL인 경우 그대로 반환
     if not thumbnail_data.startswith('data:image'):
+        logger.info(f"썸네일이 이미 URL입니다. 길이: {len(thumbnail_data)}")
         return thumbnail_data if len(thumbnail_data) <= 500 else None
     
     try:
         # base64 데이터 추출
         match = re.match(r'data:image/([^;]+);base64,(.+)', thumbnail_data)
         if not match:
+            logger.error("base64 데이터 형식이 올바르지 않습니다.")
             return None
         
         extension = match.group(1)
         base64_data = match.group(2)
+        logger.info(f"base64 데이터 추출 성공. 확장자: {extension}, 데이터 길이: {len(base64_data)}")
         
         # S3에 업로드
         s3_url = upload_base64_image_to_s3(
@@ -220,10 +226,17 @@ def upload_thumbnail_to_s3(thumbnail_data: str, article_id: int) -> Optional[str
             image_index=0
         )
         
+        if s3_url:
+            logger.info(f"썸네일 업로드 성공: {s3_url}")
+        else:
+            logger.error("썸네일 업로드 실패: upload_base64_image_to_s3가 None을 반환했습니다.")
+        
         return s3_url
         
     except Exception as e:
         logger.error(f"썸네일 업로드 실패: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return None
 
 
