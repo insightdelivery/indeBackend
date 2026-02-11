@@ -73,8 +73,10 @@ class Command(BaseCommand):
         
         # 환경 변수 파일 경로 확인
         self.stdout.write(f"\n환경 변수 파일 경로:")
-        self.stdout.write(f"  .env.production: {env_prod_path}")
-        self.stdout.write(f"  파일 존재: {'✅ 있음' if env_prod_path.exists() else '❌ 없음'}")
+        self.stdout.write(f"  메인 파일 (.env): {main_env_path}")
+        self.stdout.write(f"  메인 파일 존재: {'✅ 있음' if main_env_path.exists() else '❌ 없음'}")
+        self.stdout.write(f"  환경별 파일 ({env_name}): {env_file_path}")
+        self.stdout.write(f"  환경별 파일 존재: {'✅ 있음' if env_file_path.exists() else '❌ 없음'}")
         
         if not aws_access_key or not aws_secret_key:
             self.stdout.write(self.style.ERROR("\n❌ AWS 인증 정보가 설정되지 않았습니다."))
