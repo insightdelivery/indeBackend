@@ -373,12 +373,15 @@ class ArticleCreateView(APIView):
             # 먼저 아티클을 생성하고, 이미지 처리를 위해 ID가 필요
             validated_data = serializer.validated_data.copy()
             content = validated_data.get('content', '')
-            thumbnail = validated_data.get('thumbnail', '')
+            # 원본 request.data에서 thumbnail 가져오기 (base64 데이터일 수 있음)
+            thumbnail_data_from_request = request.data.get('thumbnail', '')
             
             # base64 썸네일인 경우 validated_data에서 제거 (나중에 S3 업로드 후 저장)
             # URL인 경우만 validated_data에 포함
-            if thumbnail and thumbnail.startswith('data:image'):
+            if thumbnail_data_from_request and thumbnail_data_from_request.startswith('data:image'):
                 validated_data['thumbnail'] = None  # base64는 나중에 처리
+            else:
+                validated_data['thumbnail'] = thumbnail_data_from_request if thumbnail_data_from_request else None
             
             # 아티클 생성
             article = Article.objects.create(**validated_data)
@@ -390,9 +393,9 @@ class ArticleCreateView(APIView):
                     article.content = new_content
                     article.save(update_fields=['content'])
             
-            # 썸네일을 S3에 업로드
-            if thumbnail:
-                thumbnail_url = upload_thumbnail_to_s3(thumbnail, article.id)
+            # 썸네일을 S3에 업로드 (원본 request.data에서 가져옴)
+            if thumbnail_data_from_request:
+                thumbnail_url = upload_thumbnail_to_s3(thumbnail_data_from_request, article.id)
                 if thumbnail_url:
                     article.thumbnail = thumbnail_url
                     article.save(update_fields=['thumbnail'])
