@@ -318,8 +318,19 @@ class AdminLoginView(APIView):
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
+            print(f"\n{'='*60}")
+            print(f"[Login Debug] ❌ 예외 발생!")
+            print(f"[Login Debug] 오류 타입: {type(e).__name__}")
+            print(f"[Login Debug] 오류 메시지: {str(e)}")
+            print(f"[Login Debug] 전체 트레이스백:")
+            print(error_traceback)
+            print(f"{'='*60}\n")
+            
             return Response({
-                'error': f'로그인 처리 중 오류가 발생했습니다: {str(e)}'
+                'error': f'로그인 처리 중 오류가 발생했습니다: {str(e)}',
+                'error_type': type(e).__name__,
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def get_client_ip(self, request):

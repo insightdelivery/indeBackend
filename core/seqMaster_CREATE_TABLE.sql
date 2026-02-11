@@ -86,3 +86,5 @@ INSERT INTO `seqMaster` (
 -- DESCRIBE seqMaster;
 -- SELECT * FROM seqMaster WHERE seq_tablename = 'adminMemberShip';
 
+
+

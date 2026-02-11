@@ -205,3 +205,5 @@ ip_activity = AuditLog.objects.filter(
 4. **컴플라이언스**: 법적 요구사항 충족을 위한 활동 기록
 5. **감사 (Audit)**: 외부 감사 시 증거 자료 제공
 
+
+

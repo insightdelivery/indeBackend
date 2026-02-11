@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     "core",
     "api",  # 관리자 회원 모델 포함
     "sites.admin_api",
+    "sites.admin_api.articles",  # 아티클 관리 앱
     "sites.public_api",
 ]
 
@@ -130,6 +131,21 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 CORS_ALLOW_CREDENTIALS = True
+
+# AWS S3 설정
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', '')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', '')
+AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'ap-northeast-2')
+AWS_S3_CUSTOM_DOMAIN = os.getenv('AWS_S3_CUSTOM_DOMAIN', '')  # CloudFront 도메인 등 (선택)
+
+# 환경별 버킷 이름
+# local/development: inde-develope
+# production: inde-production
+AWS_STORAGE_BUCKET_NAME_DEVELOPMENT = os.getenv('AWS_STORAGE_BUCKET_NAME_DEVELOPMENT', 'inde-develope')
+AWS_STORAGE_BUCKET_NAME_PRODUCTION = os.getenv('AWS_STORAGE_BUCKET_NAME_PRODUCTION', 'inde-production')
+
+# 명시적으로 버킷 이름을 지정할 경우 (환경별 자동 선택보다 우선)
+AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME', '')
 CORS_ALLOW_ALL_ORIGINS = False  # 프로덕션에서는 False로 설정
 
 # CORS 허용 메서드

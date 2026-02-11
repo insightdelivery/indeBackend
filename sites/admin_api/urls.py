@@ -1,12 +1,11 @@
 """
 관리자 API URL 설정
+순환 import 방지를 위해 views를 지연 로드합니다.
 """
 from django.urls import path, include
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
-from sites.admin_api.views import LoginView, RefreshTokenView, LogoutView
-from api.adminMember.urls import urlpatterns as admin_member_urls
 
 
 class PingView(APIView):
@@ -20,31 +19,51 @@ class PingView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-# API v1 URL 패턴
-api_v1_patterns = [
-    path('login/', LoginView.as_view(), name='admin_api_login'),
-    path('refresh/', RefreshTokenView.as_view(), name='admin_api_refresh'),
-    path('logout/', LogoutView.as_view(), name='admin_api_logout'),
-]
+# 순환 import 방지를 위해 views를 지연 로드
+def get_urlpatterns():
+    from sites.admin_api.views import LoginView, RefreshTokenView, LogoutView
+    
+    # API v1 URL 패턴
+    api_v1_patterns = [
+        path('login/', LoginView.as_view(), name='admin_api_login'),
+        path('refresh/', RefreshTokenView.as_view(), name='admin_api_refresh'),
+        path('logout/', LogoutView.as_view(), name='admin_api_logout'),
+    ]
+    
+    return [
+        path('ping/', PingView.as_view(), name='admin_api_ping'),
+        
+        # 기존 Account 기반 로그인 (하위 호환성)
+        path('login/', LoginView.as_view(), name='admin_api_login_legacy'),
+        path('api/login/', LoginView.as_view(), name='admin_api_login_api'),
+        path('api/login', LoginView.as_view(), name='admin_api_login_api_no_slash'),
+        path('api/v1/', include(api_v1_patterns)),
+        path('refresh/', RefreshTokenView.as_view(), name='admin_api_refresh_legacy'),
+        path('api/refresh/', RefreshTokenView.as_view(), name='admin_api_refresh_api'),
+        path('api/refresh', RefreshTokenView.as_view(), name='admin_api_refresh_api_no_slash'),
+        path('logout/', LogoutView.as_view(), name='admin_api_logout_legacy'),
+        path('api/logout/', LogoutView.as_view(), name='admin_api_logout_api'),
+        path('api/logout', LogoutView.as_view(), name='admin_api_logout_api_no_slash'),
+        
+        # 관리자 회원 API (AdminMemberShip 기반)
+        # 순환 import 방지를 위해 문자열로 전달
+        path('adminMember/', include('api.adminMember.urls')),
+        
+        # 시스템 코드 관리 API
+        path('sysCodeManage/syscode/', include('sites.admin_api.sysCodeManage.urls')),
+        
+        # SystemManage CRUD API (참고 프로젝트 구조)
+        path('systemmanage/', include('sites.admin_api.systemManage.urls')),
+        
+        # 아티클 관리 API
+        path('article/', include('sites.admin_api.articles.urls')),
+        
+        # 파일 관리 API (S3)
+        path('files/', include('sites.admin_api.files.urls')),
+        
+        # 여기에 추가 관리자 API 엔드포인트 추가
+    ]
 
-urlpatterns = [
-    path('ping/', PingView.as_view(), name='admin_api_ping'),
-    
-    # 기존 Account 기반 로그인 (하위 호환성)
-    path('login/', LoginView.as_view(), name='admin_api_login_legacy'),
-    path('api/login/', LoginView.as_view(), name='admin_api_login_api'),
-    path('api/login', LoginView.as_view(), name='admin_api_login_api_no_slash'),
-    path('api/v1/', include(api_v1_patterns)),
-    path('refresh/', RefreshTokenView.as_view(), name='admin_api_refresh_legacy'),
-    path('api/refresh/', RefreshTokenView.as_view(), name='admin_api_refresh_api'),
-    path('api/refresh', RefreshTokenView.as_view(), name='admin_api_refresh_api_no_slash'),
-    path('logout/', LogoutView.as_view(), name='admin_api_logout_legacy'),
-    path('api/logout/', LogoutView.as_view(), name='admin_api_logout_api'),
-    path('api/logout', LogoutView.as_view(), name='admin_api_logout_api_no_slash'),
-    
-    # 관리자 회원 API (AdminMemberShip 기반)
-    path('adminMember/', include(admin_member_urls)),
-    
-    # 여기에 추가 관리자 API 엔드포인트 추가
-]
+# urlpatterns를 함수에서 가져옴
+urlpatterns = get_urlpatterns()
 

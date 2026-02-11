@@ -37,10 +37,10 @@ class AccountManager(BaseUserManager):
 class Account(AbstractBaseUser, PermissionsMixin):
     """
     확장된 사용자 모델
-    - UUID 기반 식별자
+    - UUID 기반 식별자 (CHAR(36) 형식)
     - 전화번호, 생년월일, 이메일 인증 등 지원
     """
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.CharField(primary_key=True, max_length=36, default=lambda: str(uuid.uuid4()), editable=False, verbose_name='UUID')
     email = models.EmailField(unique=True, verbose_name='이메일')
     phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='전화번호')
     birth_date = models.DateField(blank=True, null=True, verbose_name='생년월일')
@@ -85,7 +85,7 @@ class AuditLog(models.Model):
     ]
     
     id = models.BigAutoField(primary_key=True)
-    user_id = models.CharField(max_length=15, null=True, blank=True, verbose_name='사용자 ID (Account.id 또는 AdminMemberShip.memberShipSid)')
+    user_id = models.CharField(max_length=50, null=True, blank=True, verbose_name='사용자 ID', help_text='Account.id(UUID 36자) 또는 AdminMemberShip.memberShipSid(15자) 또는 IndeUser.id')
     site_slug = models.CharField(max_length=50, blank=True, verbose_name='사이트')
     action = models.CharField(max_length=20, choices=ACTION_CHOICES, verbose_name='액션')
     resource = models.CharField(max_length=100, blank=True, verbose_name='리소스')
@@ -136,5 +136,41 @@ class SeqMaster(models.Model):
     
     def __str__(self):
         return f"{self.seq_tablename} - {self.seq_value}"
+
+
+class SysCodeManager(models.Model):
+    """시스템 코드 관리 모델 - sysCodeManager 테이블과 매핑"""
+    sid = models.AutoField(primary_key=True)
+    parentsSid = models.IntegerField()
+    sysCodeSid = models.CharField(max_length=12, default='')
+    sysCodeParentsSid = models.CharField(max_length=12, default='')
+    sysCodeName = models.CharField(max_length=255, default='')
+    sysCodeValName = models.CharField(max_length=255, null=True, blank=True)
+    sysCodeVal = models.CharField(max_length=255, null=True, blank=True)
+    sysCodeVal1Name = models.CharField(max_length=255, null=True, blank=True)
+    sysCodeVal1 = models.CharField(max_length=255, null=True, blank=True)
+    sysCodeVal2Name = models.CharField(max_length=255, null=True, blank=True)
+    sysCodeVal2 = models.CharField(max_length=255, null=True, blank=True)
+    sysCodeVal3Name = models.CharField(max_length=255, null=True, blank=True)
+    sysCodeVal3 = models.CharField(max_length=255, null=True, blank=True)
+    sysCodeVal4Name = models.CharField(max_length=255, null=True, blank=True)
+    sysCodeVal4 = models.CharField(max_length=255, null=True, blank=True)
+    sysCodeUse = models.CharField(
+        max_length=1,
+        choices=[('Y', '사용'), ('N', '미사용')],
+        default='Y'
+    )
+    sysCodeSort = models.IntegerField(null=True, blank=True)
+    sysCodeRegUserName = models.CharField(max_length=30, null=True, blank=True)
+    sysCodeRegDateTime = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        managed = False  # 기존 테이블 사용
+        db_table = 'sysCodeManager'
+        verbose_name = '시스템 코드 관리'
+        verbose_name_plural = '시스템 코드 관리'
+
+    def __str__(self):
+        return f"{self.sysCodeSid} - {self.sysCodeName}"
 
 
