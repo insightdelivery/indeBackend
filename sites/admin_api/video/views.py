@@ -692,15 +692,22 @@ class VideoUploadView(APIView):
             }
         }
         """
+        import time
+        start_time = time.time()
+        logger.info(f"[VideoUpload] 업로드 요청 수신 시작 - Content-Length: {request.META.get('CONTENT_LENGTH', 'Unknown')}")
+        
         try:
             # 모든 파일은 서버 사이드 업로드로 처리
             if 'file' not in request.FILES:
+                logger.warning("[VideoUpload] 파일이 요청에 없습니다.")
                 return Response(
                     create_error_response('파일이 필요합니다.', '01'),
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             uploaded_file: UploadedFile = request.FILES['file']
+            file_received_time = time.time()
+            logger.info(f"[VideoUpload] 파일 수신 완료 - 파일명: {uploaded_file.name}, 크기: {uploaded_file.size} bytes, 수신 시간: {file_received_time - start_time:.2f}초")
             
             # 파일 확장자 확인
             if not uploaded_file.name.lower().endswith('.mp4'):
@@ -722,12 +729,16 @@ class VideoUploadView(APIView):
                 )
             
             # Cloudflare Stream에 업로드
+            logger.info(f"[VideoUpload] Cloudflare Stream 업로드 시작 - 파일명: {uploaded_file.name}")
             cf_stream = get_cloudflare_stream()
 
+            cf_upload_start = time.time()
             upload_result = cf_stream.upload_video(
                 file_obj=uploaded_file.file,
                 filename=uploaded_file.name
             )
+            cf_upload_time = time.time() - cf_upload_start
+            logger.info(f"[VideoUpload] Cloudflare Stream 업로드 완료 - 소요 시간: {cf_upload_time:.2f}초")
             
             video_stream_id = upload_result['video_id']
             video_info = upload_result['video_info']
@@ -747,6 +758,9 @@ class VideoUploadView(APIView):
                     'height': video_info.get('height'),
                 }
             }
+            
+            total_time = time.time() - start_time
+            logger.info(f"[VideoUpload] 전체 업로드 완료 - 총 소요 시간: {total_time:.2f}초, videoStreamId: {video_stream_id}")
             
             return Response(
                 create_success_response(result, '비디오 업로드 성공'),
