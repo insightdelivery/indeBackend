@@ -177,6 +177,18 @@ JWT_ALGORITHM = "HS256"
 JWT_ACCESS_EXPIRATION_DELTA = 15 * 60  # 15분
 JWT_REFRESH_EXPIRATION_DELTA = 7 * 24 * 60 * 60  # 7일
 
+# 파일 업로드 크기 제한 설정 (2GB)
+# DATA_UPLOAD_MAX_MEMORY_SIZE: 메모리에 로드할 수 있는 최대 데이터 크기
+# FILE_UPLOAD_MAX_MEMORY_SIZE: 메모리에 로드할 수 있는 최대 파일 크기
+# 큰 파일은 임시 파일로 저장되므로 이 값보다 큰 파일도 업로드 가능
+DATA_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024 * 1024  # 2GB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024 * 1024  # 2GB
+
+# 파일 업로드 디렉토리 설정
+FILE_UPLOAD_TEMP_DIR = None  # 시스템 기본 임시 디렉토리 사용
+FILE_UPLOAD_PERMISSIONS = 0o644  # 파일 권한
+FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o755  # 디렉토리 권한
+
 # 마이그레이션 보호장치
 import sys
 if os.getenv("DISALLOW_MIGRATE", "0") == "1" and "migrate" in sys.argv:
