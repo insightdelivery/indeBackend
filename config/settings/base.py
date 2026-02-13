@@ -169,6 +169,19 @@ CORS_ALLOW_HEADERS = [
     "user-agent",
     "x-csrftoken",
     "x-requested-with",
+    # TUS 프로토콜 헤더
+    "upload-length",
+    "upload-metadata",
+    "upload-offset",
+    "upload-defer-length",
+    "upload-expires",
+    "tus-resumable",
+]
+
+# CSRF 신뢰할 수 있는 Origin 설정
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
 
 # JWT 설정

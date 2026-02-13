@@ -55,3 +55,9 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = False  # 보안을 위해 False 유지
 
+# CSRF 신뢰할 수 있는 Origin 설정 (로컬 개발)
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+

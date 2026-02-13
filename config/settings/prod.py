@@ -45,6 +45,12 @@ CORS_ALLOWED_ORIGINS = [
     "https://www.inde.kr",
 ]
 
+# CSRF 신뢰할 수 있는 Origin 설정 (프로덕션)
+CSRF_TRUSTED_ORIGINS = [
+    "https://admin.inde.kr",
+    "https://www.inde.kr",
+]
+
 # 보안 설정
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True

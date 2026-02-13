@@ -13,6 +13,7 @@ from sites.admin_api.video.views import (
     VideoUploadView,
     VideoStreamInfoView,
 )
+from sites.admin_api.video.tus_views import TUSUploadView, TUSCompleteView
 
 app_name = 'video'
 
@@ -25,9 +26,17 @@ urlpatterns = [
     path('create/', VideoCreateView.as_view(), name='video_create'),
     path('create', VideoCreateView.as_view(), name='video_create_no_slash'),
     
-    # 비디오 파일 업로드 (Cloudflare Stream)
+    # 비디오 파일 업로드 (Cloudflare Stream) - 기존 방식 (하위 호환성)
     path('upload/', VideoUploadView.as_view(), name='video_upload'),
     path('upload', VideoUploadView.as_view(), name='video_upload_no_slash'),
+    
+    # TUS 업로드 엔드포인트
+    path('upload/tus/', TUSUploadView.as_view(), name='tus_upload_create'),
+    path('upload/tus', TUSUploadView.as_view(), name='tus_upload_create_no_slash'),
+    path('upload/tus/<str:upload_id>/', TUSUploadView.as_view(), name='tus_upload'),
+    path('upload/tus/<str:upload_id>', TUSUploadView.as_view(), name='tus_upload_no_slash'),
+    path('upload/tus/<str:upload_id>/complete/', TUSCompleteView.as_view(), name='tus_upload_complete'),
+    path('upload/tus/<str:upload_id>/complete', TUSCompleteView.as_view(), name='tus_upload_complete_no_slash'),
     
     # Cloudflare Stream 비디오 정보 조회
     path('stream/<str:videoStreamId>/info/', VideoStreamInfoView.as_view(), name='video_stream_info'),
