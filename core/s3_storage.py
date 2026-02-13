@@ -151,6 +151,7 @@ class S3Storage:
             key: S3에 저장될 파일 경로/이름
             content_type: 파일의 MIME 타입 (예: 'image/jpeg')
             metadata: 추가 메타데이터 (dict)
+                    - ASCII가 아닌 문자가 포함된 값은 자동으로 base64 인코딩됨
         
         Returns:
             업로드된 파일의 URL
@@ -160,11 +161,39 @@ class S3Storage:
             NoCredentialsError: AWS 인증 정보가 없을 때
         """
         try:
+            import base64
+            
             extra_args = {}
             if content_type:
                 extra_args['ContentType'] = content_type
             if metadata:
-                extra_args['Metadata'] = metadata
+                # S3 메타데이터는 ASCII 문자만 허용하므로, 비ASCII 문자를 base64 인코딩
+                encoded_metadata = {}
+                for k, v in metadata.items():
+                    if isinstance(v, str):
+                        # ASCII가 아닌 문자가 포함되어 있는지 확인
+                        try:
+                            v.encode('ascii')
+                            # ASCII 문자만 포함된 경우 그대로 사용
+                            encoded_metadata[k] = v
+                        except UnicodeEncodeError:
+                            # 비ASCII 문자가 포함된 경우 base64 인코딩
+                            encoded_value = base64.b64encode(v.encode('utf-8')).decode('ascii')
+                            encoded_metadata[k] = encoded_value
+                            # 디코딩을 위해 인코딩 여부를 표시하는 플래그 추가
+                            encoded_metadata[f'{k}_encoded'] = 'true'
+                    else:
+                        # 문자열이 아닌 경우 문자열로 변환 후 처리
+                        v_str = str(v)
+                        try:
+                            v_str.encode('ascii')
+                            encoded_metadata[k] = v_str
+                        except UnicodeEncodeError:
+                            encoded_value = base64.b64encode(v_str.encode('utf-8')).decode('ascii')
+                            encoded_metadata[k] = encoded_value
+                            encoded_metadata[f'{k}_encoded'] = 'true'
+                
+                extra_args['Metadata'] = encoded_metadata
             
             # 파일을 처음으로 되돌림 (이미 읽힌 경우 대비)
             file_obj.seek(0)

@@ -70,10 +70,13 @@ class FileUploadView(APIView):
             # 파일명 생성
             original_filename = uploaded_file.name
             file_ext = os.path.splitext(original_filename)[1]
+            
+            # S3에 저장할 파일명: 년월일시분초 형식 (YYYYMMDDHHMMSS)
+            timestamp_filename = datetime.now().strftime('%Y%m%d%H%M%S')
             if prefix:
-                filename = f"{prefix}_{uuid.uuid4().hex[:8]}{file_ext}"
+                filename = f"{prefix}_{timestamp_filename}{file_ext}"
             else:
-                filename = f"{uuid.uuid4().hex}{file_ext}"
+                filename = f"{timestamp_filename}{file_ext}"
             
             s3_key = f"{full_folder}{filename}"
             
@@ -91,7 +94,7 @@ class FileUploadView(APIView):
                 key=s3_key,
                 content_type=content_type,
                 metadata={
-                    'original_filename': original_filename,
+                    'original_filename': original_filename,  # s3_storage.upload_file에서 자동으로 base64 인코딩됨
                     'uploaded_by': str(request.user.id) if hasattr(request.user, 'id') else 'unknown'
                 }
             )

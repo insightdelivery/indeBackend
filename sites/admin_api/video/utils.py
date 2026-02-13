@@ -195,12 +195,18 @@ def upload_attachment_to_s3(file_data: bytes, filename: str, video_id: int) -> O
         업로드된 파일의 S3 URL 또는 None
     """
     try:
+        from datetime import datetime
+        
         # 파일명에서 확장자 추출
         file_ext = filename.split('.')[-1] if '.' in filename else ''
-        safe_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
+        if file_ext:
+            file_ext = '.' + file_ext
+        
+        # S3에 저장할 파일명: 년월일시분초 형식 (YYYYMMDDHHMMSS)
+        timestamp_filename = datetime.now().strftime('%Y%m%d%H%M%S') + file_ext
         
         # S3 경로 생성
-        s3_key = get_video_image_path(video_id, f"attachments/{safe_filename}")
+        s3_key = get_video_image_path(video_id, f"attachments/{timestamp_filename}")
         
         # Content-Type 설정
         content_type_map = {
@@ -217,7 +223,7 @@ def upload_attachment_to_s3(file_data: bytes, filename: str, video_id: int) -> O
         # S3에 업로드
         s3_storage = get_s3_storage()
         file_obj = BytesIO(file_data)
-        logger.info(f"첨부파일 업로드 시작 - video_id: {video_id}, s3_key: {s3_key}, 크기: {len(file_data)} bytes")
+        logger.info(f"첨부파일 업로드 시작 - video_id: {video_id}, s3_key: {s3_key}, 크기: {len(file_data)} bytes, 원본 파일명: {filename}")
         url = s3_storage.upload_file(
             file_obj=file_obj,
             key=s3_key,
@@ -225,7 +231,7 @@ def upload_attachment_to_s3(file_data: bytes, filename: str, video_id: int) -> O
             metadata={
                 'video_id': str(video_id),
                 'file_type': 'attachment',
-                'original_filename': filename,
+                'original_filename': filename,  # s3_storage.upload_file에서 자동으로 base64 인코딩됨
             }
         )
         

@@ -420,7 +420,17 @@ class VideoCreateView(APIView):
         비디오/세미나 생성
         """
         try:
-            serializer = VideoCreateSerializer(data=request.data)
+            # 썸네일이 base64인 경우 먼저 처리 (시리얼라이저 검증 전에 제거)
+            thumbnail_data = request.data.get('thumbnail')
+            is_base64_thumbnail = thumbnail_data and thumbnail_data.startswith('data:image')
+            
+            # 시리얼라이저에 전달할 데이터 복사 (base64 썸네일은 제외)
+            serializer_data = request.data.copy()
+            if is_base64_thumbnail:
+                # base64 썸네일은 시리얼라이저에서 제외 (나중에 S3 업로드 후 처리)
+                serializer_data['thumbnail'] = None
+            
+            serializer = VideoCreateSerializer(data=serializer_data)
             
             if not serializer.is_valid():
                 error_message = '입력값이 올바르지 않습니다.'
@@ -443,8 +453,7 @@ class VideoCreateView(APIView):
             video = serializer.save()
             
             # 썸네일이 base64인 경우 S3에 업로드
-            thumbnail_data = request.data.get('thumbnail')
-            if thumbnail_data and thumbnail_data.startswith('data:image'):
+            if is_base64_thumbnail:
                 thumbnail_url = upload_thumbnail_to_s3(thumbnail_data, video.id)
                 if thumbnail_url:
                     video.thumbnail = thumbnail_url
@@ -819,6 +828,206 @@ class VideoStreamInfoView(APIView):
             logger.error(f"비디오 정보 조회 실패: {e}", exc_info=True)
             return Response(
                 create_error_response(f'비디오 정보 조회 실패: {str(e)}', '99'),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class CloudflareTUSCreateView(APIView):
+    """
+    Cloudflare Stream TUS 업로드 세션 생성 API
+    POST /video/cloudflare/tus/create
+    
+    브라우저가 Cloudflare로 직접 TUS 업로드할 수 있도록 세션을 생성합니다.
+    """
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]
+    
+    def post(self, request):
+        """
+        TUS 업로드 세션 생성
+        
+        Request Body:
+        {
+            "filename": "myvideo.mp4",
+            "filesize": 391234567,
+            "contentType": "video/mp4"  # 선택
+        }
+        
+        Response:
+        {
+            "IndeAPIResponse": {
+                "ErrorCode": "00",
+                "Message": "TUS 업로드 세션 생성 성공",
+                "Result": {
+                    "uid": "cloudflare_video_uid",
+                    "uploadUrl": "https://upload.videodelivery.net/..."
+                }
+            }
+        }
+        """
+        try:
+            filename = request.data.get('filename')
+            filesize = request.data.get('filesize')
+            content_type = request.data.get('contentType', 'video/mp4')
+            
+            if not filename:
+                return Response(
+                    create_error_response('filename은 필수입니다.', '01'),
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not filesize or not isinstance(filesize, int) or filesize <= 0:
+                return Response(
+                    create_error_response('filesize는 양의 정수여야 합니다.', '01'),
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 2GB 제한
+            MAX_SIZE = 2 * 1024 * 1024 * 1024  # 2GB
+            if filesize > MAX_SIZE:
+                return Response(
+                    create_error_response(
+                        f'파일 크기가 2GB를 초과합니다. (현재: {filesize / (1024*1024*1024):.2f}GB)',
+                        '01'
+                    ),
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            logger.info(f"[Cloudflare TUS] 세션 생성 요청: filename={filename}, filesize={filesize}")
+            
+            # Cloudflare Stream TUS 세션 생성
+            cf_stream = get_cloudflare_stream()
+            session_result = cf_stream.create_tus_upload_session(
+                filename=filename,
+                filesize=filesize,
+                content_type=content_type,
+            )
+            
+            logger.info(f"[Cloudflare TUS] 세션 생성 성공: uid={session_result['uid']}")
+            
+            return Response(
+                create_success_response(session_result, 'TUS 업로드 세션 생성 성공'),
+                status=status.HTTP_200_OK
+            )
+            
+        except ValueError as e:
+            return Response(
+                create_error_response(str(e), '01'),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"TUS 세션 생성 실패: {e}", exc_info=True)
+            return Response(
+                create_error_response(f'TUS 세션 생성 실패: {str(e)}', '99'),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class CloudflareTUSCompleteView(APIView):
+    """
+    Cloudflare Stream TUS 업로드 완료 처리 API
+    POST /video/cloudflare/tus/complete
+    
+    브라우저가 Cloudflare로 직접 업로드를 완료한 후, DB에 저장합니다.
+    서버는 파일을 업로드하지 않고, 완료 알림만 처리합니다.
+    """
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]
+    
+    def post(self, request):
+        """
+        TUS 업로드 완료 처리
+        
+        Request Body:
+        {
+            "uid": "cloudflare_video_uid",
+            "filename": "myvideo.mp4",
+            "filesize": 391234567
+        }
+        
+        Response:
+        {
+            "IndeAPIResponse": {
+                "ErrorCode": "00",
+                "Message": "비디오 업로드 완료",
+                "Result": {
+                    "videoStreamId": "...",
+                    "embedUrl": "...",
+                    "thumbnailUrl": "...",
+                    "hlsUrl": "...",
+                    "dashUrl": "...",
+                    "videoInfo": {...}
+                }
+            }
+        }
+        """
+        try:
+            uid = request.data.get('uid')
+            filename = request.data.get('filename')
+            filesize = request.data.get('filesize')
+            
+            if not uid:
+                return Response(
+                    create_error_response('uid는 필수입니다.', '01'),
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            logger.info(f"[Cloudflare TUS] 업로드 완료 처리: uid={uid}, filename={filename}")
+            
+            # Cloudflare Stream에서 비디오 정보 조회
+            cf_stream = get_cloudflare_stream()
+            video_info = cf_stream.get_video(uid)
+            
+            # 비디오 상태 확인 (ready 여부)
+            video_status = video_info.get('status', 'unknown')
+            if video_status != 'ready':
+                logger.warning(f"[Cloudflare TUS] 비디오가 아직 준비되지 않음: status={video_status}")
+            
+            # 비디오 이름 설정 (파일명 그대로 사용)
+            if filename:
+                try:
+                    logger.info(f"[Cloudflare TUS] 비디오 이름 설정 시도: uid={uid}, filename={filename}")
+                    updated_video = cf_stream.update_video(uid, meta={'name': filename})
+                    logger.info(f"[Cloudflare TUS] 비디오 이름 설정 성공: {filename}")
+                    logger.info(f"[Cloudflare TUS] 업데이트된 비디오 정보: {updated_video}")
+                except Exception as e:
+                    logger.error(f"[Cloudflare TUS] 비디오 이름 설정 실패: {e}", exc_info=True)
+                    # 실패해도 계속 진행 (비디오는 이미 업로드됨)
+            
+            # 응답 데이터 구성
+            result = {
+                'videoStreamId': uid,
+                'embedUrl': cf_stream.get_video_embed_url(uid),
+                'thumbnailUrl': cf_stream.get_video_thumbnail_url(uid),
+                'hlsUrl': cf_stream.get_video_hls_url(uid),
+                'dashUrl': cf_stream.get_video_dash_url(uid),
+                'videoInfo': {
+                    'status': video_info.get('status'),
+                    'duration': video_info.get('duration'),
+                    'size': video_info.get('size'),
+                    'width': video_info.get('width'),
+                    'height': video_info.get('height'),
+                }
+            }
+            
+            logger.info(f"[Cloudflare TUS] 업로드 완료 처리 성공: uid={uid}")
+            
+            return Response(
+                create_success_response(result, '비디오 업로드 완료'),
+                status=status.HTTP_200_OK
+            )
+            
+        except ValueError as e:
+            return Response(
+                create_error_response(str(e), '01'),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"TUS 업로드 완료 처리 실패: {e}", exc_info=True)
+            return Response(
+                create_error_response(f'비디오 업로드 완료 처리 실패: {str(e)}', '99'),
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

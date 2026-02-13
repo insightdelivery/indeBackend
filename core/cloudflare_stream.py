@@ -4,7 +4,7 @@ Cloudflare Stream API 유틸리티
 """
 import os
 import requests
-from typing import Optional, BinaryIO, Dict, Any
+from typing import Optional, BinaryIO, Dict, Any, List
 from django.conf import settings
 import logging
 
@@ -45,6 +45,179 @@ class CloudflareStream:
         """Stream API URL 생성"""
         return f"{self.BASE_URL}/accounts/{self.account_id}/stream{endpoint}"
 
+    def create_tus_upload_session(
+        self,
+        filename: str,
+        filesize: int,
+        content_type: str = "video/mp4",
+        max_duration_seconds: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Cloudflare Stream TUS 업로드 세션 생성
+        브라우저가 직접 Cloudflare로 TUS 업로드할 수 있도록 세션을 생성합니다.
+        
+        Args:
+            filename: 파일명
+            filesize: 파일 크기 (bytes)
+            content_type: 파일 타입 (기본: video/mp4)
+            max_duration_seconds: 최대 재생 시간 (초)
+        
+        Returns:
+            {
+                "uid": "cloudflare_video_uid",
+                "uploadUrl": "tus_upload_location_url"
+            }
+        """
+        import base64
+        
+        # TUS 메타데이터 생성 (base64 인코딩)
+        # Cloudflare Stream은 filename과 name을 모두 지원
+        filename_b64 = base64.b64encode(filename.encode('utf-8')).decode('ascii')
+        content_type_b64 = base64.b64encode(content_type.encode('utf-8')).decode('ascii')
+        # 파일명에서 확장자 제거한 이름도 추가 (Cloudflare가 name으로 사용할 수 있음)
+        import os
+        name_without_ext = os.path.splitext(filename)[0]
+        name_b64 = base64.b64encode(name_without_ext.encode('utf-8')).decode('ascii')
+        # filename과 name 모두 전달
+        upload_metadata = f"filename {filename_b64},filetype {content_type_b64},name {name_b64}"
+        
+        # TUS 세션 생성용 헤더
+        tus_headers = {
+            'Authorization': f'Bearer {self.api_token}',
+            'Tus-Resumable': '1.0.0',
+            'Upload-Length': str(filesize),
+            'Upload-Metadata': upload_metadata,
+        }
+        
+        # 추가 옵션이 있으면 쿼리 파라미터로 전달
+        endpoint = self._get_stream_url("")
+        params = {'direct_user': 'true'}
+        if max_duration_seconds:
+            params['maxDurationSeconds'] = max_duration_seconds
+        
+        logger.info(f"Cloudflare TUS 세션 생성 요청: filename={filename}, filesize={filesize}")
+        
+        resp = requests.post(
+            endpoint,
+            headers=tus_headers,
+            params=params,
+            timeout=30,
+        )
+        
+        # 응답 상세 로깅
+        logger.info(f"Cloudflare TUS 세션 생성 응답: Status={resp.status_code}")
+        logger.info(f"응답 헤더: {dict(resp.headers)}")
+        logger.info(f"응답 본문: {resp.text[:500]}")  # 처음 500자만
+        
+        if resp.status_code not in [200, 201]:
+            try:
+                error_body = resp.json()
+            except Exception:
+                error_body = {}
+            
+            errors = error_body.get("errors", []) if isinstance(error_body, dict) else []
+            messages = error_body.get("messages", []) if isinstance(error_body, dict) else []
+            error_codes = {str(e.get("code")) for e in errors if isinstance(e, dict)}
+            
+            if "10011" in error_codes:
+                detail_msg = "Cloudflare Stream 저장 용량이 초과되어 업로드할 수 없습니다."
+                if messages:
+                    message_texts = [m.get("message") for m in messages if isinstance(m, dict) and m.get("message")]
+                    if message_texts:
+                        detail_msg = f"{detail_msg} {' / '.join(message_texts)}"
+                raise ValueError(detail_msg)
+            
+            raise ValueError(f"TUS 세션 생성 실패: {resp.status_code} - {resp.text}")
+        
+        # Location 헤더에서 TUS 업로드 URL 추출
+        location = resp.headers.get('Location')
+        if not location:
+            logger.error(f"Location 헤더가 없습니다. 전체 응답 헤더: {dict(resp.headers)}")
+            raise ValueError(f"TUS 세션 생성 응답에 Location 헤더가 없습니다: {dict(resp.headers)}")
+        
+        logger.info(f"Location 헤더: {location}")
+        
+        # 응답 본문에서 uid 추출 시도
+        video_uid = None
+        try:
+            result = resp.json()
+            logger.info(f"응답 JSON 파싱 성공: {result}")
+            
+            # 다양한 응답 형식 지원
+            if isinstance(result, dict):
+                # 형식 1: {"result": {"uid": "..."}}
+                if result.get('result') and isinstance(result['result'], dict):
+                    video_uid = result['result'].get('uid')
+                    logger.info(f"응답에서 uid 추출 (result.uid): {video_uid}")
+                
+                # 형식 2: {"uid": "..."}
+                if not video_uid:
+                    video_uid = result.get('uid')
+                    logger.info(f"응답에서 uid 추출 (root.uid): {video_uid}")
+                
+                # 형식 3: {"success": true, "result": {"uid": "..."}}
+                if not video_uid and result.get('success') and result.get('result'):
+                    if isinstance(result['result'], dict):
+                        video_uid = result['result'].get('uid')
+                        logger.info(f"응답에서 uid 추출 (success.result.uid): {video_uid}")
+        except Exception as e:
+            logger.warning(f"응답 JSON 파싱 실패 (무시): {e}")
+            logger.warning(f"원본 응답 텍스트: {resp.text[:200]}")
+        
+        # Location URL에서 uid 추출 시도 (백업)
+        if not video_uid and location:
+            import re
+            # Location 형식 예시:
+            # - https://upload.videodelivery.net/{uid}
+            # - https://api.cloudflare.com/client/v4/accounts/{account_id}/stream/{uid}
+            # - /stream/{uid}
+            patterns = [
+                r'/([a-f0-9]{32,})$',  # 32자 이상의 hex 문자열 (일반적인 Cloudflare uid)
+                r'/([a-f0-9]+)$',      # 모든 hex 문자열
+                r'stream/([a-f0-9]+)', # stream/ 뒤의 uid
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, location)
+                if match:
+                    video_uid = match.group(1)
+                    logger.info(f"Location URL에서 uid 추출 (패턴: {pattern}): {video_uid}")
+                    break
+        
+        # 여전히 uid를 찾지 못한 경우
+        if not video_uid:
+            logger.error(f"video uid를 찾을 수 없습니다.")
+            logger.error(f"  - Location: {location}")
+            logger.error(f"  - 응답 본문: {resp.text}")
+            logger.error(f"  - 응답 헤더: {dict(resp.headers)}")
+            
+            # Location URL 자체를 uploadUrl로 사용하고, uid는 나중에 업로드 완료 후 추출
+            # 또는 Location의 마지막 경로를 uid로 사용
+            if location:
+                import re
+                # Location의 마지막 경로를 uid로 사용 (임시)
+                last_path = location.rstrip('/').split('/')[-1]
+                if last_path and len(last_path) >= 8:  # 최소 길이 체크
+                    video_uid = last_path
+                    logger.warning(f"Location의 마지막 경로를 uid로 사용 (임시): {video_uid}")
+                else:
+                    raise ValueError(
+                        f"TUS 세션 생성 응답에서 video uid를 찾을 수 없습니다. "
+                        f"Location: {location}, 응답 본문: {resp.text[:200]}"
+                    )
+            else:
+                raise ValueError(
+                    f"TUS 세션 생성 응답에서 video uid를 찾을 수 없습니다. "
+                    f"응답 본문: {resp.text[:200]}"
+                )
+        
+        logger.info(f"Cloudflare TUS 세션 생성 성공: uid={video_uid}, uploadUrl={location}")
+        
+        return {
+            "uid": video_uid,
+            "uploadUrl": location,
+        }
+    
     def create_direct_upload(
         self,
         max_duration_seconds: Optional[int] = None,
@@ -53,7 +226,7 @@ class CloudflareStream:
         watermark: Optional[Dict] = None,
     ) -> Dict[str, Any]:
         """
-        Cloudflare Direct Creator Upload URL 발급
+        Cloudflare Direct Creator Upload URL 발급 (기존 방식, 하위 호환성)
         """
         payload: Dict[str, Any] = {
             "maxDurationSeconds": max_duration_seconds or 36000
@@ -185,6 +358,16 @@ class CloudflareStream:
                         timeout=1800,  # 30분 (2GB 파일 업로드 고려)
                     )
                     logger.info(f"파일 업로드 응답 (시도 {attempt + 1}/{max_retries}): Status={response.status_code}")
+                    
+                    # 에러 발생 시 상세 정보 로깅
+                    if response.status_code not in [200, 201]:
+                        logger.error(f"[Cloudflare Stream] 에러 응답 상세:")
+                        logger.error(f"  - Status Code: {response.status_code}")
+                        logger.error(f"  - 응답 본문: {response.text[:1000]}")  # 처음 1000자만
+                        logger.error(f"  - 응답 헤더: {dict(response.headers)}")
+                        logger.error(f"  - 요청 URL: {endpoint}")
+                        logger.error(f"  - 파일 크기: {file_size} bytes ({file_size / (1024*1024):.2f}MB)")
+                        logger.error(f"  - 파일명: {filename}")
 
                     if response.status_code in [200, 201]:
                         # 성공
@@ -214,31 +397,56 @@ class CloudflareStream:
                             retry_delay *= 2  # 지수 백오프
                             continue
                     elif response.status_code == 413:
-                        # 413 오류는 파일 크기 제한 문제 (할당량 문제가 아님)
+                        # 413 오류 상세 분석
+                        logger.error(f"[Cloudflare Stream] 413 Payload Too Large 에러 상세 분석:")
+                        logger.error(f"  - 전체 응답 본문: {response.text}")
+                        logger.error(f"  - 응답 헤더 전체: {dict(response.headers)}")
+                        logger.error(f"  - 요청 헤더: {dict(upload_headers)}")
+                        logger.error(f"  - 파일 크기: {file_size} bytes ({file_size / (1024*1024):.2f}MB)")
+                        logger.error(f"  - 파일명: {filename}")
+                        logger.error(f"  - 엔드포인트: {endpoint}")
+                        
+                        # Cloudflare 응답 파싱 시도
                         try:
                             error_json = response.json()
+                            logger.error(f"  - JSON 파싱 성공: {error_json}")
                             cloudflare_error = error_json.get('errors', [{}])[0] if isinstance(error_json.get('errors'), list) else {}
                             cloudflare_message = cloudflare_error.get('message', '')
+                            cloudflare_code = cloudflare_error.get('code', '')
                             
-                            if 'quota' in error_text.lower() or 'minutes' in error_text.lower() or 'allocation' in error_text.lower():
+                            logger.error(f"  - Cloudflare 에러 코드: {cloudflare_code}")
+                            logger.error(f"  - Cloudflare 에러 메시지: {cloudflare_message}")
+                            
+                            if 'quota' in error_text.lower() or 'minutes' in error_text.lower() or 'allocation' in error_text.lower() or cloudflare_code == '10011':
                                 # 실제로 할당량 문제인 경우
                                 error_detail = f"Cloudflare Stream 할당량이 초과되었습니다. {cloudflare_message}" if cloudflare_message else "Cloudflare Stream 할당량이 초과되었습니다."
                             else:
-                                # 파일 크기 제한 문제
+                                # 파일 크기 제한 문제 또는 기타 문제
                                 file_size_mb = file_size / (1024 * 1024)
                                 error_detail = (
                                     f"파일 크기가 Cloudflare Stream 업로드 제한을 초과했습니다. "
                                     f"(파일 크기: {file_size_mb:.2f}MB) "
-                                    f"{cloudflare_message if cloudflare_message else 'Cloudflare Stream API는 대용량 파일 업로드에 제한이 있을 수 있습니다.'}"
+                                    f"Cloudflare 응답: {cloudflare_message if cloudflare_message else '에러 메시지 없음 (코드: ' + str(cloudflare_code) + ')'}"
                                 )
-                        except:
-                            # JSON 파싱 실패 시 기본 메시지
+                        except Exception as parse_error:
+                            # JSON 파싱 실패 시
+                            logger.error(f"  - JSON 파싱 실패: {parse_error}")
+                            logger.error(f"  - 원본 응답 텍스트: {response.text}")
                             file_size_mb = file_size / (1024 * 1024)
-                            error_detail = (
-                                f"파일 크기가 Cloudflare Stream 업로드 제한을 초과했습니다. "
-                                f"(파일 크기: {file_size_mb:.2f}MB) "
-                                f"Cloudflare Stream API는 대용량 파일 업로드에 제한이 있을 수 있습니다."
-                            )
+                            
+                            # 응답이 HTML이거나 다른 형식일 수 있음
+                            if 'html' in response.text.lower() or '<html' in response.text.lower():
+                                error_detail = (
+                                    f"413 에러 발생. 응답이 HTML 형식입니다. "
+                                    f"이는 Cloudflare가 아닌 중간 프록시나 웹서버에서 발생한 에러일 수 있습니다. "
+                                    f"(파일 크기: {file_size_mb:.2f}MB)"
+                                )
+                            else:
+                                error_detail = (
+                                    f"파일 크기가 Cloudflare Stream 업로드 제한을 초과했습니다. "
+                                    f"(파일 크기: {file_size_mb:.2f}MB) "
+                                    f"원본 응답: {response.text[:500]}"
+                                )
                         
                         raise ValueError(
                             f"비디오 업로드 실패: 413 Payload Too Large. {error_detail}"
@@ -330,6 +538,68 @@ class CloudflareStream:
         except requests.exceptions.RequestException as e:
             logger.error(f"Cloudflare Stream API 요청 실패: {e}")
             raise ValueError(f"비디오 조회 중 오류가 발생했습니다: {str(e)}")
+    
+    def update_video(self, video_id: str, meta: Optional[Dict[str, Any]] = None, require_signed_urls: Optional[bool] = None, allowed_origins: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        비디오 메타데이터 업데이트
+        
+        Args:
+            video_id: Cloudflare Stream 비디오 ID
+            meta: 비디오 메타데이터 (예: {"name": "비디오 이름"})
+            require_signed_urls: 서명된 URL 필요 여부
+            allowed_origins: 허용된 오리진 리스트
+        
+        Returns:
+            업데이트된 비디오 정보
+        """
+        try:
+            endpoint = self._get_stream_url(f"/{video_id}")
+            logger.info(f"비디오 메타데이터 업데이트: {video_id}, meta={meta}")
+            
+            payload: Dict[str, Any] = {}
+            if meta:
+                payload['meta'] = meta
+            if require_signed_urls is not None:
+                payload['requireSignedURLs'] = require_signed_urls
+            if allowed_origins:
+                payload['allowedOrigins'] = allowed_origins
+            
+            if not payload:
+                logger.warning("업데이트할 메타데이터가 없습니다.")
+                return self.get_video(video_id)
+            
+            logger.info(f"비디오 업데이트 요청: endpoint={endpoint}, payload={payload}")
+            
+            response = requests.patch(
+                endpoint,
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+            
+            logger.info(f"비디오 업데이트 응답: status={response.status_code}, headers={dict(response.headers)}")
+            logger.info(f"비디오 업데이트 응답 본문: {response.text[:500]}")
+            
+            if response.status_code != 200:
+                error_msg = f"비디오 업데이트 실패: {response.status_code} - {response.text}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            result = response.json()
+            logger.info(f"비디오 업데이트 응답 JSON: {result}")
+            
+            if not result.get('result'):
+                error_msg = f"비디오 업데이트 응답 오류: {result}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            updated_result = result['result']
+            logger.info(f"비디오 메타데이터 업데이트 성공: {video_id}, meta={updated_result.get('meta')}")
+            return updated_result
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Cloudflare Stream API 요청 실패: {e}")
+            raise ValueError(f"비디오 업데이트 중 오류가 발생했습니다: {str(e)}")
     
     def delete_video(self, video_id: str) -> bool:
         """

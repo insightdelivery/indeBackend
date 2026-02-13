@@ -12,6 +12,8 @@ from sites.admin_api.video.views import (
     VideoHardDeleteView,
     VideoUploadView,
     VideoStreamInfoView,
+    CloudflareTUSCreateView,
+    CloudflareTUSCompleteView,
 )
 from sites.admin_api.video.tus_views import TUSUploadView, TUSCompleteView
 
@@ -41,6 +43,14 @@ urlpatterns = [
     # Cloudflare Stream 비디오 정보 조회
     path('stream/<str:videoStreamId>/info/', VideoStreamInfoView.as_view(), name='video_stream_info'),
     path('stream/<str:videoStreamId>/info', VideoStreamInfoView.as_view(), name='video_stream_info_no_slash'),
+    
+    # Cloudflare Stream TUS 업로드 세션 생성
+    path('cloudflare/tus/create/', CloudflareTUSCreateView.as_view(), name='cloudflare_tus_create'),
+    path('cloudflare/tus/create', CloudflareTUSCreateView.as_view(), name='cloudflare_tus_create_no_slash'),
+    
+    # Cloudflare Stream TUS 업로드 완료 처리
+    path('cloudflare/tus/complete/', CloudflareTUSCompleteView.as_view(), name='cloudflare_tus_complete'),
+    path('cloudflare/tus/complete', CloudflareTUSCompleteView.as_view(), name='cloudflare_tus_complete_no_slash'),
     
     # 비디오/세미나 일괄 삭제
     path('batch-delete/', VideoBatchDeleteView.as_view(), name='video_batch_delete'),
