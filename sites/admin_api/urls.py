@@ -58,6 +58,9 @@ def get_urlpatterns():
         # 아티클 관리 API
         path('article/', include('sites.admin_api.articles.urls')),
         
+        # 비디오/세미나 관리 API
+        path('video/', include('sites.admin_api.video.urls')),
+        
         # 파일 관리 API (S3)
         path('files/', include('sites.admin_api.files.urls')),
         
