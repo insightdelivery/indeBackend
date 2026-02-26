@@ -23,6 +23,9 @@ INSTALLED_APPS = [
     "sites.admin_api",
     "sites.admin_api.articles",  # 아티클 관리 앱
     "sites.public_api",
+    "apps.notice",
+    "apps.faq",
+    "apps.inquiry",
 ]
 
 MIDDLEWARE = [

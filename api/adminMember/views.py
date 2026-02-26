@@ -2,6 +2,8 @@
 관리자 회원 API 뷰
 로그인, 회원가입 등
 """
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -131,13 +133,14 @@ class AdminRegisterView(APIView):
         return ip
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class AdminLoginView(APIView):
     """
     관리자 회원 로그인 API
     memberShipId와 비밀번호로 로그인하여 JWT 토큰을 발급받습니다.
     """
     permission_classes = [AllowAny]  # 로그인은 인증 불필요
-    
+
     def post(self, request):
         """
         관리자 회원 로그인 처리

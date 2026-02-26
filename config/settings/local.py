@@ -47,17 +47,31 @@ else:
         'PORT': os.getenv('DB_PORT', '3306'),
     })
 
-# CORS 설정 (로컬 개발)
+# CORS 설정 (로컬 개발) - localhost/127.0.0.1 모든 포트 허용
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
+# 로컬 개발: localhost/127.0.0.1 어떤 포트로 접속해도 CORS 통과
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^http://localhost(:\d+)?$",
+    r"^http://127\.0\.0\.1(:\d+)?$",
 ]
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = False  # 보안을 위해 False 유지
+CORS_ALLOW_ALL_ORIGINS = False
+
+# 이메일 인증 링크의 프론트엔드 베이스 URL (메일 내 링크가 이 주소로 연결됨)
+PUBLIC_VERIFY_BASE_URL = os.getenv('PUBLIC_VERIFY_BASE_URL', 'http://localhost:3001')
 
 # CSRF 신뢰할 수 있는 Origin 설정 (로컬 개발)
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
 ]
 

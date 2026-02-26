@@ -158,6 +158,33 @@ curl http://localhost:8001/healthz/
   - 마이그레이션 파일 생성: `python manage.py makemigrations` (허용)
   - 마이그레이션 적용: DBA 승인 후 수동으로 수행
 
+### DB가 SQL 스크립트로만 생성된 경우 (테이블이 이미 있을 때)
+
+테이블을 SQL로 먼저 만든 뒤 `migrate`를 돌리면 "Table already exists" 등으로 실패할 수 있습니다. 아래 순서로 맞춘 뒤 `migrate`를 사용하세요.
+
+1. **이미 있는 테이블은 건너뛰고 적용**
+   ```bash
+   python manage.py migrate --fake-initial
+   ```
+
+2. **public_api 0002, 0003이 "already exists" / "Can't DROP INDEX" 로 실패하면** 해당 마이그레이션만 fake 처리
+   ```bash
+   python manage.py migrate public_api 0002_indeuser_socialaccount --fake
+   python manage.py migrate public_api 0003_remove_socialaccount_socialaccou_user_id_idx_and_more --fake
+   ```
+
+3. **public_api 0004만 적용하고 싶을 때** (post_migrate 오류로 `migrate`가 실패하는 경우)
+   ```bash
+   DJANGO_SETTINGS_MODULE=config.settings.local python apply_public_api_0004_standalone.py
+   ```
+   이 스크립트는 `publicMemberShip`에 `sns_provider_uid` 추가·`member_sid` INT AUTO_INCREMENT 반영, 필요 시 `django_content_type.name` NULL 허용 처리, 그리고 `django_migrations`에 0004 기록까지 수행합니다.
+
+4. **`migrate` 후 "Field 'name' doesn't have a default value" (django_content_type) 오류가 나면**
+   ```sql
+   ALTER TABLE django_content_type MODIFY COLUMN name VARCHAR(100) NULL DEFAULT NULL;
+   ```
+   실행 후 다시 `python manage.py migrate`를 실행합니다.
+
 ## 주요 기능
 
 ### 1. 공통 모델
