@@ -13,7 +13,7 @@ SITE_MAP = {
     "api.inde.kr": {
         "slug": "public_api",
         "urlconf": "sites.public_api.urls",
-        "cors": ["https://www.inde.kr"],
+        "cors": ["https://www.inde.kr", "https://inde.kr"],
         "media_prefix": "public",
     },
     

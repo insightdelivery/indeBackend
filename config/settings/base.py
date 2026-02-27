@@ -38,6 +38,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "config.middleware.CurrentSiteMiddleware",
+    "config.middleware.SiteCorsMiddleware",  # site_meta['cors'] 기준 CORS (실서버 보장)
 ]
 
 ROOT_URLCONF = "config.urls"

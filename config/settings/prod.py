@@ -43,12 +43,14 @@ ALLOWED_HOSTS = [
 CORS_ALLOWED_ORIGINS = [
     "https://admin.inde.kr",
     "https://www.inde.kr",
+    "https://inde.kr",
 ]
 
 # CSRF 신뢰할 수 있는 Origin 설정 (프로덕션)
 CSRF_TRUSTED_ORIGINS = [
     "https://admin.inde.kr",
     "https://www.inde.kr",
+    "https://inde.kr",
 ]
 
 # 보안 설정
