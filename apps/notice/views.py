@@ -22,10 +22,11 @@ class NoticePagination(PageNumberPagination):
 class NoticeViewSet(viewsets.ModelViewSet):
     """
     공지사항 ViewSet.
-    - 목록/상세: 전체 공개 (AllowAny)
-    - 생성/수정/삭제: 관리자만 (BoardJWTAuthentication + IsAdminUser)
+    - 목록/상세: 전체 공개 (AllowAny) — 비로그인·실서버에서도 403 없이 조회
+    - 생성/수정/삭제: 관리자만 (BoardJWTAuthentication + IsStaffOrReadOnly)
     - 상세 조회 시 view_count 자동 증가
     """
+    permission_classes = [AllowAny]  # 기본을 AllowAny로 두어 전역 IsAuthenticated가 적용되지 않게 함
     queryset = Notice.objects.all()
     pagination_class = NoticePagination
     filter_backends = [SearchFilter, OrderingFilter]
