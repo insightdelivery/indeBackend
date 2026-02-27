@@ -34,7 +34,9 @@ def _get_client_ip(request):
 
 
 def _frontend_callback_url():
-    base = getattr(settings, 'PUBLIC_VERIFY_BASE_URL', '').rstrip('/') or 'http://localhost:3001'
+    base = (getattr(settings, 'PUBLIC_VERIFY_BASE_URL', '') or '').strip().rstrip('/')
+    if not base:
+        base = 'http://localhost:3001'  # 로컬 개발 기본값
     return f'{base}/auth/callback'
 
 

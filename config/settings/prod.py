@@ -53,6 +53,9 @@ CSRF_TRUSTED_ORIGINS = [
     "https://inde.kr",
 ]
 
+# OAuth/인증 메일 등 프론트 리다이렉트 베이스 (실서버 기본값: https://inde.kr)
+PUBLIC_VERIFY_BASE_URL = os.getenv('PUBLIC_VERIFY_BASE_URL', 'https://inde.kr').rstrip('/')
+
 # 보안 설정
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
