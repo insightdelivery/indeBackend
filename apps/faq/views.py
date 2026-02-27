@@ -16,9 +16,11 @@ class FAQPagination(PageNumberPagination):
 class FAQViewSet(viewsets.ModelViewSet):
     """
     FAQ ViewSet.
-    - 목록: 전체 공개 (AllowAny)
+    - 목록/상세: 전체 공개 (인증 없음, AllowAny)
     - 생성/수정/삭제: 관리자만 (BoardJWTAuthentication + IsAdminUser)
     """
+    permission_classes = [AllowAny]
+    authentication_classes = []
     queryset = FAQ.objects.all()
     pagination_class = FAQPagination
     ordering = ["order"]
@@ -30,8 +32,7 @@ class FAQViewSet(viewsets.ModelViewSet):
         return FAQCreateUpdateSerializer
 
     def get_authenticators(self):
-        action = getattr(self, "action", None)
-        if action in ("list", "retrieve"):
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
             return []
         return [BoardJWTAuthentication()]
 

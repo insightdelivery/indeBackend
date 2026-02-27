@@ -22,11 +22,12 @@ class NoticePagination(PageNumberPagination):
 class NoticeViewSet(viewsets.ModelViewSet):
     """
     공지사항 ViewSet.
-    - 목록/상세: 전체 공개 (AllowAny) — 비로그인·실서버에서도 403 없이 조회
+    - 목록/상세: 전체 공개 (인증 없음, AllowAny)
     - 생성/수정/삭제: 관리자만 (BoardJWTAuthentication + IsStaffOrReadOnly)
     - 상세 조회 시 view_count 자동 증가
     """
-    permission_classes = [AllowAny]  # 기본을 AllowAny로 두어 전역 IsAuthenticated가 적용되지 않게 함
+    permission_classes = [AllowAny]
+    authentication_classes = []  # 기본 인증 없음 → list/retrieve 시 토큰 검사하지 않음
     queryset = Notice.objects.all()
     pagination_class = NoticePagination
     filter_backends = [SearchFilter, OrderingFilter]
@@ -43,9 +44,9 @@ class NoticeViewSet(viewsets.ModelViewSet):
         return NoticeCreateUpdateSerializer
 
     def get_authenticators(self):
-        action = getattr(self, "action", None)
-        if action in ("list", "retrieve"):
-            return []
+        # 인증 실행 시점에 self.action이 아직 설정되지 않으므로 request.method로 구분
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return []  # 조회: 인증 없음 (공지 목록/상세 공개)
         return [BoardJWTAuthentication()]
 
     def get_permissions(self):

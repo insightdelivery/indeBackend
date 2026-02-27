@@ -64,7 +64,10 @@ def get_urlpatterns():
         # 파일 관리 API (S3)
         path('files/', include('sites.admin_api.files.urls')),
         
-        # 여기에 추가 관리자 API 엔드포인트 추가
+        # 게시판 관리 API (공지/FAQ/1:1문의)
+        path('board/', include('sites.admin_api.board.urls')),
+        # 공개 회원(PublicMemberShip) 관리 API
+        path('publicMembers/', include('sites.admin_api.public_members.urls')),
     ]
 
 # urlpatterns를 함수에서 가져옴
