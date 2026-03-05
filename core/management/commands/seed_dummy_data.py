@@ -4,6 +4,7 @@
 
 - 다시 실행하면 기존 더미 데이터는 삭제 후 지정한 개수만큼 새로 생성합니다.
 - 썸네일: §6.2 C에 따라 더미 이미지를 S3에 업로드 후 반환 URL을 thumbnail에 저장합니다.
+- status/visibility: _docsRules/backend/article/articleDbPlan.me §2.3 (sysCodeSid) 기준.
 
 사용법:
   python manage.py seed_dummy_data --article 50
@@ -23,6 +24,12 @@ from sites.admin_api.articles.utils import upload_thumbnail_to_s3
 
 # sysCode 테이블 없을 때 사용할 기본 카테고리
 DEFAULT_CATEGORY_IDS = ['category_article_01']
+
+# articleDbPlan.me §2.3.1 visibility (공개 범위)
+VISIBILITY_ALL = 'SYS26209B016'  # 전체공개
+# articleDbPlan.me §2.3.2 status (발행 상태)
+STATUS_PUBLISHED = 'SYS26209B021'   # 즉시발행
+STATUS_DRAFT = 'SYS26209B022'       # 임시저장
 
 # §6.3 썸네일: 기독교 관련, 크기 1200x630(16:9 계열). §6.2 C: S3 업로드용 이미지
 THUMBNAIL_WIDTH = 1200
@@ -136,7 +143,8 @@ class Command(BaseCommand):
 
         category_ids = get_category_syscode_ids()
         authors = [f'더미 작성자 {i}' for i in range(1, 11)]  # 10명 번갈아 사용
-        statuses = ['published'] * 8 + ['draft'] * 2  # 80% published, 20% draft
+        # articleDbPlan.me §2.3.2: 즉시발행(SYS26209B021) 80%, 임시저장(SYS26209B022) 20%
+        statuses = [STATUS_PUBLISHED] * 8 + [STATUS_DRAFT] * 2
 
         # §6.2 C: S3 업로드용 더미 이미지 base64 (1회만 로드/다운로드)
         thumbnail_base64 = get_dummy_thumbnail_base64()
@@ -163,7 +171,7 @@ class Command(BaseCommand):
                 category=category,
                 author=author,
                 authorAffiliation='인디 매거진',
-                visibility='all',
+                visibility=VISIBILITY_ALL,  # articleDbPlan.me §2.3.1 전체공개
                 status=status,
                 isEditorPick=is_editor_pick,
                 viewCount=random.randint(0, 500),

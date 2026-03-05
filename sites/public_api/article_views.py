@@ -1,7 +1,7 @@
 """
 공개용 아티클 목록 API (frontend_www)
 - 인증 불필요(AllowAny)
-- status=published, 삭제되지 않은 글만 조회
+- status = 즉시발행(sysCode SYS26209B021) 또는 리터럴 'published', 삭제되지 않은 글만 조회
 - list-api.me 규칙 준수
 """
 from rest_framework.views import APIView
@@ -9,8 +9,10 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from django.core.paginator import Paginator
+from django.db.models import Q
 
 from sites.admin_api.articles.models import Article
+
 from sites.admin_api.articles.serializers import ArticleListSerializer
 from sites.admin_api.articles.utils import get_presigned_thumbnail_url
 from core.utils import create_success_response, create_error_response
@@ -21,7 +23,6 @@ class PublicArticleListView(APIView):
     공개 아티클 목록 조회
     GET /api/articles/
     - 인증 불필요
-    - published, 미삭제만
     """
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -42,7 +43,8 @@ class PublicArticleListView(APIView):
 
             queryset = Article.objects.filter(
                 deletedAt__isnull=True,
-                status='published',
+            ).filter(
+                Q(status='SYS26209B021'),
             )
             if category:
                 queryset = queryset.filter(category=category)
