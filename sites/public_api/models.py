@@ -78,6 +78,29 @@ class PublicMemberShip(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
 
+    # 탈퇴(Soft Delete) 관련 - publicUserWithdrawRules.md
+    STATUS_ACTIVE = 'ACTIVE'
+    STATUS_WITHDRAW_REQUEST = 'WITHDRAW_REQUEST'
+    STATUS_WITHDRAWN = 'WITHDRAWN'
+    STATUS_CHOICES = [
+        (STATUS_ACTIVE, '정상'),
+        (STATUS_WITHDRAW_REQUEST, '탈퇴 요청'),
+        (STATUS_WITHDRAWN, '탈퇴 완료'),
+    ]
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_ACTIVE,
+        verbose_name='회원 상태',
+        db_index=True,
+    )
+    withdraw_reason = models.TextField(null=True, blank=True, verbose_name='탈퇴 사유')
+    withdraw_detail_reason = models.TextField(null=True, blank=True, verbose_name='탈퇴 상세 사유')
+    withdraw_requested_at = models.DateTimeField(null=True, blank=True, verbose_name='탈퇴 요청일시')
+    withdraw_completed_at = models.DateTimeField(null=True, blank=True, verbose_name='탈퇴 완료일시')
+    withdraw_ip = models.CharField(max_length=45, null=True, blank=True, verbose_name='탈퇴 요청 IP')
+    withdraw_user_agent = models.TextField(null=True, blank=True, verbose_name='탈퇴 요청 User-Agent')
+
     class Meta:
         db_table = 'publicMemberShip'
         verbose_name = '공개 회원'
@@ -89,6 +112,7 @@ class PublicMemberShip(models.Model):
             models.Index(fields=['joined_via']),
             models.Index(fields=['is_active']),
             models.Index(fields=['sns_provider_uid']),
+            models.Index(fields=['status']),
         ]
 
     def __str__(self):
