@@ -133,6 +133,8 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://dev.inde.kr",
+    "http://dev.inde.kr",
 ]
 CORS_ALLOW_CREDENTIALS = True
 

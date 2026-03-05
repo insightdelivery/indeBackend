@@ -44,6 +44,8 @@ CORS_ALLOWED_ORIGINS = [
     "https://admin.inde.kr",
     "https://www.inde.kr",
     "https://inde.kr",
+    "https://dev.inde.kr",
+    "http://dev.inde.kr",
 ]
 
 # CSRF 신뢰할 수 있는 Origin 설정 (프로덕션)
@@ -51,6 +53,8 @@ CSRF_TRUSTED_ORIGINS = [
     "https://admin.inde.kr",
     "https://www.inde.kr",
     "https://inde.kr",
+    "https://dev.inde.kr",
+    "http://dev.inde.kr",
 ]
 
 # OAuth/인증 메일 등 프론트 리다이렉트 베이스 (실서버 기본값: https://inde.kr)

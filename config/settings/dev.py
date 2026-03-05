@@ -45,5 +45,7 @@ ALLOWED_HOSTS = [
 CORS_ALLOWED_ORIGINS = [
     "https://admin.inde.kr",
     "https://www.inde.kr",
+    "https://dev.inde.kr",
+    "http://dev.inde.kr",
 ]
 
