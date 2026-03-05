@@ -339,3 +339,45 @@ class ProfileCompleteView(APIView):
         member.profile_completed = True
         member.save()
         return Response({'message': '프로필이 완료되었습니다.', 'user': _user_response(member)}, status=status.HTTP_200_OK)
+
+
+class TokenRefreshView(APIView):
+    """
+    Body의 refresh_token으로 새 액세스/리프레시 토큰 발급.
+    frontend_www 로그인 유지(401 시 갱신 재시도)용.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        refresh_token = (request.data or {}).get('refresh_token') or ''
+        if not refresh_token:
+            return Response(
+                {'error': 'refresh_token이 필요합니다.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        payload = verify_jwt_token(refresh_token, token_type='refresh')
+        if not payload:
+            return Response(
+                {'error': '리프레시 토큰이 유효하지 않거나 만료되었습니다. 다시 로그인해 주세요.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        user_id = payload.get('user_id')
+        if not user_id:
+            return Response(
+                {'error': '토큰에 사용자 정보가 없습니다.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        try:
+            member = PublicMemberShip.objects.get(member_sid=int(user_id), is_active=True)
+        except (PublicMemberShip.DoesNotExist, ValueError, TypeError):
+            return Response(
+                {'error': '사용자를 찾을 수 없습니다.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        tokens = create_public_jwt_tokens(member)
+        return Response({
+            'access_token': tokens['access_token'],
+            'refresh_token': tokens['refresh_token'],
+            'expires_in': tokens['expires_in'],
+            'user': _user_response(member),
+        }, status=status.HTTP_200_OK)

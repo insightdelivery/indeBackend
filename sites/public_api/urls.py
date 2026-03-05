@@ -5,7 +5,7 @@ from django.urls import path, include
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
-from sites.public_api.views import RegisterView, LoginView, VerifyEmailView, ResendVerificationEmailView, MeView, ProfileCompleteView
+from sites.public_api.views import RegisterView, LoginView, VerifyEmailView, ResendVerificationEmailView, MeView, ProfileCompleteView, TokenRefreshView
 from sites.public_api.syscode_views import SysCodeByParentView
 from sites.public_api.google_oauth import GoogleRedirectView, GoogleCallbackView
 
@@ -35,6 +35,8 @@ urlpatterns = [
     path('api/login', LoginView.as_view(), name='public_api_login_api_no_slash'),
     path('auth/login/', LoginView.as_view(), name='public_api_auth_login'),
     path('auth/login', LoginView.as_view(), name='public_api_auth_login_no_slash'),
+    path('auth/tokenrefresh/', TokenRefreshView.as_view(), name='public_api_auth_token_refresh'),
+    path('auth/tokenrefresh', TokenRefreshView.as_view(), name='public_api_auth_token_refresh_no_slash'),
     path('auth/verify-email/', VerifyEmailView.as_view(), name='public_api_verify_email'),
     path('auth/verify-email', VerifyEmailView.as_view(), name='public_api_verify_email_no_slash'),
     path('auth/resend-verification-email/', ResendVerificationEmailView.as_view(), name='public_api_resend_verification'),

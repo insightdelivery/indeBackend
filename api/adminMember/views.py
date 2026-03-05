@@ -348,9 +348,9 @@ class AdminLoginView(APIView):
 
 class TokenRefreshView(APIView):
     """
-    액세스 토큰으로 액세스 토큰과 리프레시 토큰 모두 갱신하는 API
-    액세스 토큰이 만료되기 전에 새로운 토큰 쌍을 발급받습니다.
-    만료된 토큰도 허용하여 토큰 갱신이 가능하도록 합니다.
+    액세스/리프레시 토큰 갱신 API.
+    - Body에 refresh_token이 있으면 refresh_token으로 사용자 식별 후 새 토큰 발급 (다중 탭·로그인 풀림 방지).
+    - 없으면 Authorization Bearer access_token(만료 허용) 방식으로 동작 (하위 호환).
     """
     permission_classes = [AllowAny]  # 인증 없이도 접근 가능 (토큰은 수동 검증)
     
@@ -358,93 +358,83 @@ class TokenRefreshView(APIView):
         """
         토큰 갱신 처리
         
-        요청:
-        - Authorization 헤더에 Bearer {access_token} 포함 (만료된 토큰도 허용)
+        요청 (둘 중 하나):
+        - Body에 refresh_token (권장): 리프레시 토큰으로 사용자 식별, 만료된 토큰은 거부
+        - Authorization 헤더에 Bearer {access_token} (만료된 토큰도 허용)
         
         응답:
-        - access_token: 새로운 Access Token
-        - refresh_token: 새로운 Refresh Token
-        - expires_in: Access Token 만료 시간 (초)
-        - user: 사용자 정보
+        - access_token, refresh_token, expires_in, user
         """
         try:
             import jwt
             from django.conf import settings
             from datetime import timezone as dt_timezone
             
-            # Authorization 헤더에서 토큰 추출
-            auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-            if not auth_header or not auth_header.startswith('Bearer '):
-                return Response({
-                    'error': 'Authorization 헤더에 Bearer 토큰이 필요합니다.'
-                }, status=status.HTTP_401_UNAUTHORIZED)
+            user = None
+            refresh_token_from_body = (request.data or {}).get('refresh_token')
             
-            token = auth_header.split(' ')[1]
+            # 1) Body에 refresh_token이 있으면 해당 토큰으로 사용자 식별 (만료 검사함)
+            if refresh_token_from_body:
+                try:
+                    payload = jwt.decode(
+                        refresh_token_from_body,
+                        settings.JWT_SECRET_KEY,
+                        algorithms=[settings.JWT_ALGORITHM],
+                    )
+                except jwt.ExpiredSignatureError:
+                    return Response({
+                        'error': '리프레시 토큰이 만료되었습니다. 다시 로그인해주세요.'
+                    }, status=status.HTTP_401_UNAUTHORIZED)
+                except jwt.InvalidTokenError:
+                    return Response({
+                        'error': '유효하지 않은 리프레시 토큰입니다.'
+                    }, status=status.HTTP_401_UNAUTHORIZED)
+                if payload.get('token_type') != 'refresh' or payload.get('site') != 'admin_api':
+                    return Response({
+                        'error': '잘못된 리프레시 토큰입니다.'
+                    }, status=status.HTTP_401_UNAUTHORIZED)
+                user_id = payload.get('user_id')
+                if not user_id:
+                    return Response({'error': '토큰에 사용자 ID가 없습니다.'}, status=status.HTTP_401_UNAUTHORIZED)
+                try:
+                    user = AdminMemberShip.objects.get(memberShipSid=user_id, is_active=True)
+                except AdminMemberShip.DoesNotExist:
+                    return Response({'error': '사용자를 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
             
-            # 토큰 디코딩 (만료된 토큰도 허용)
-            try:
-                payload = jwt.decode(
-                    token,
-                    settings.JWT_SECRET_KEY,
-                    algorithms=[settings.JWT_ALGORITHM],
-                    options={"verify_exp": False}  # 만료 검증 비활성화
-                )
-            except jwt.InvalidTokenError:
-                return Response({
-                    'error': '유효하지 않은 토큰입니다.'
-                }, status=status.HTTP_401_UNAUTHORIZED)
-            
-            # 토큰 타입 확인 (access 토큰만 허용)
-            if payload.get('token_type') != 'access':
-                return Response({
-                    'error': 'Access 토큰만 사용할 수 있습니다.'
-                }, status=status.HTTP_401_UNAUTHORIZED)
-            
-            # 사이트 확인
-            if payload.get('site') != 'admin_api':
-                return Response({
-                    'error': '잘못된 사이트 토큰입니다.'
-                }, status=status.HTTP_401_UNAUTHORIZED)
-            
-            # 사용자 조회
-            user_id = payload.get('user_id')
-            if not user_id:
-                return Response({
-                    'error': '토큰에 사용자 ID가 없습니다.'
-                }, status=status.HTTP_401_UNAUTHORIZED)
-            
-            try:
-                user = AdminMemberShip.objects.get(memberShipSid=user_id, is_active=True)
-            except AdminMemberShip.DoesNotExist:
-                return Response({
-                    'error': '사용자를 찾을 수 없습니다.'
-                }, status=status.HTTP_404_NOT_FOUND)
-            
-            # 현재 토큰의 발급 시간 확인
-            auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-            if auth_header.startswith('Bearer '):
+            # 2) Body에 refresh_token이 없으면 기존 방식: Authorization Bearer access_token
+            if user is None:
+                auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+                if not auth_header or not auth_header.startswith('Bearer '):
+                    return Response({
+                        'error': 'Authorization 헤더에 Bearer 토큰 또는 Body에 refresh_token이 필요합니다.'
+                    }, status=status.HTTP_401_UNAUTHORIZED)
                 token = auth_header.split(' ')[1]
                 try:
                     payload = jwt.decode(
                         token,
                         settings.JWT_SECRET_KEY,
                         algorithms=[settings.JWT_ALGORITHM],
-                        options={"verify_exp": False}  # 만료 검증은 나중에
+                        options={"verify_exp": False}
                     )
-                    token_issued_at = payload.get('iat')
-                    if token_issued_at:
-                        token_issued_at = datetime.fromtimestamp(token_issued_at, tz=dt_timezone.utc)
-                        
-                        # 사용자의 마지막 토큰 발급 시간 확인
-                        if user.token_issued_at and token_issued_at < user.token_issued_at:
-                            # 로그아웃 후 발급된 토큰이므로 무효화
-                            return Response({
-                                'error': '이 토큰은 로그아웃되어 무효화되었습니다.'
-                            }, status=status.HTTP_401_UNAUTHORIZED)
                 except jwt.InvalidTokenError:
-                    return Response({
-                        'error': '유효하지 않은 토큰입니다.'
-                    }, status=status.HTTP_401_UNAUTHORIZED)
+                    return Response({'error': '유효하지 않은 토큰입니다.'}, status=status.HTTP_401_UNAUTHORIZED)
+                if payload.get('token_type') != 'access' or payload.get('site') != 'admin_api':
+                    return Response({'error': 'Access 토큰만 사용할 수 있습니다.'}, status=status.HTTP_401_UNAUTHORIZED)
+                user_id = payload.get('user_id')
+                if not user_id:
+                    return Response({'error': '토큰에 사용자 ID가 없습니다.'}, status=status.HTTP_401_UNAUTHORIZED)
+                try:
+                    user = AdminMemberShip.objects.get(memberShipSid=user_id, is_active=True)
+                except AdminMemberShip.DoesNotExist:
+                    return Response({'error': '사용자를 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
+                # 액세스 토큰 발급 시각이 로그아웃/갱신 이전이면 무효
+                token_issued_at = payload.get('iat')
+                if token_issued_at:
+                    token_issued_at = datetime.fromtimestamp(token_issued_at, tz=dt_timezone.utc)
+                    if user.token_issued_at and token_issued_at < user.token_issued_at:
+                        return Response({
+                            'error': '이 토큰은 로그아웃되어 무효화되었습니다.'
+                        }, status=status.HTTP_401_UNAUTHORIZED)
             
             # 새로운 JWT 토큰 생성
             tokens = create_admin_member_jwt_tokens(user)
