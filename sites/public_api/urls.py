@@ -54,6 +54,8 @@ urlpatterns = [
     path('api/notices/', include('apps.notice.urls')),
     path('api/faqs/', include('apps.faq.urls')),
     path('api/inquiries/', include('apps.inquiry.urls')),
+    # 공개 아티클 목록 (frontend_www)
+    path('api/articles/', include('sites.public_api.article_urls')),
 ]
 
 
