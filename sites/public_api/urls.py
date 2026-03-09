@@ -8,6 +8,17 @@ from rest_framework import status
 from sites.public_api.views import RegisterView, LoginView, VerifyEmailView, ResendVerificationEmailView, MeView, ProfileCompleteView, TokenRefreshView
 from sites.public_api.syscode_views import SysCodeByParentView
 from sites.public_api.google_oauth import GoogleRedirectView, GoogleCallbackView
+from sites.public_api.library_useractivity_views import (
+    LibraryUserActivityView,
+    LibraryUserActivityRating,
+    LibraryUserActivityBookmark,
+    LibraryStatsViewCount,
+    LibraryStatsRating,
+    LibraryStatsBookmark,
+    LibraryMeViews,
+    LibraryMeBookmarks,
+    LibraryMeRatings,
+)
 
 
 class PingView(APIView):
@@ -58,6 +69,16 @@ urlpatterns = [
     path('api/inquiries/', include('apps.inquiry.urls')),
     # 공개 아티클 목록 (frontend_www)
     path('api/articles/', include('sites.public_api.article_urls')),
+    # 라이브러리 사용자 활동 (userPublicActiviteLog.md)
+    path('api/library/useractivity/view/', LibraryUserActivityView.as_view()),
+    path('api/library/useractivity/rating/', LibraryUserActivityRating.as_view()),
+    path('api/library/useractivity/bookmark/', LibraryUserActivityBookmark.as_view()),
+    path('api/library/useractivity/me/views/', LibraryMeViews.as_view()),
+    path('api/library/useractivity/me/bookmarks/', LibraryMeBookmarks.as_view()),
+    path('api/library/useractivity/me/ratings/', LibraryMeRatings.as_view()),
+    path('api/library/stats/view-count/', LibraryStatsViewCount.as_view()),
+    path('api/library/stats/rating/', LibraryStatsRating.as_view()),
+    path('api/library/stats/bookmark/', LibraryStatsBookmark.as_view()),
 ]
 
 

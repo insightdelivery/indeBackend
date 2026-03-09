@@ -13,16 +13,25 @@ from sites.public_api import email_verification
 
 
 def _user_response(member):
-    """PublicMemberShip -> API 응답 user 객체"""
+    """PublicMemberShip -> API 응답 user 객체 (회원정보 수정 폼에 필요한 필드 포함)"""
     return {
         'id': member.member_sid,
         'email': member.email,
         'name': member.name,
         'nickname': member.nickname,
         'phone': member.phone,
+        'position': member.position or None,
+        'birth_year': member.birth_year,
+        'birth_month': member.birth_month,
+        'birth_day': member.birth_day,
+        'region_type': member.region_type or None,
+        'region_domestic': member.region_domestic or None,
+        'region_foreign': member.region_foreign or None,
         'profile_completed': member.profile_completed,
         'joined_via': member.joined_via,
         'is_staff': getattr(member, 'is_staff', False),
+        'created_at': member.created_at.isoformat() if member.created_at else None,
+        'updated_at': member.updated_at.isoformat() if member.updated_at else None,
     }
 
 

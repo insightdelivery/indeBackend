@@ -129,6 +129,62 @@ class PublicMemberShip(models.Model):
         return check_password(raw_password, self.password)
 
 
+class PublicUserActivityLog(models.Model):
+    """
+    라이브러리 사용자 활동 로그 (테이블: publicUserActivityLog)
+    - 조회(VIEW), 별점(RATING), 북마크(BOOKMARK) 기록
+    - userPublicActiviteLog.md 참조
+    """
+    CONTENT_TYPE_CHOICES = [
+        ('ARTICLE', '아티클'),
+        ('VIDEO', '비디오'),
+        ('SEMINAR', '세미나'),
+    ]
+    ACTIVITY_TYPE_CHOICES = [
+        ('VIEW', '조회'),
+        ('RATING', '별점'),
+        ('BOOKMARK', '북마크'),
+    ]
+
+    public_user_activity_log_id = models.BigAutoField(primary_key=True, db_column='publicUserActivityLogId', verbose_name='사용자 활동 로그 PK')
+    content_type = models.CharField(max_length=20, choices=CONTENT_TYPE_CHOICES, db_column='contentType', verbose_name='콘텐츠 타입')
+    content_code = models.CharField(max_length=50, db_column='contentCode', verbose_name='콘텐츠 고유 코드')
+    user = models.ForeignKey(
+        PublicMemberShip,
+        on_delete=models.CASCADE,
+        related_name='activity_logs',
+        db_column='userId',
+        verbose_name='회원 ID',
+    )
+    activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPE_CHOICES, db_column='activityType', verbose_name='사용자 행동 유형')
+    rating_value = models.SmallIntegerField(null=True, blank=True, db_column='ratingValue', verbose_name='별점 값 (1~5)')
+    ip_address = models.CharField(max_length=45, null=True, blank=True, db_column='ipAddress', verbose_name='접속 IP')
+    user_agent = models.CharField(max_length=500, null=True, blank=True, db_column='userAgent', verbose_name='브라우저 정보')
+    reg_date_time = models.DateTimeField(auto_now=True, db_column='regDateTime', verbose_name='기록 시간')
+
+    class Meta:
+        db_table = 'publicUserActivityLog'
+        verbose_name = '공개 사용자 활동 로그'
+        verbose_name_plural = '공개 사용자 활동 로그'
+        ordering = ['-reg_date_time']
+        indexes = [
+            models.Index(fields=['content_type', 'content_code'], name='idx_content'),
+            models.Index(fields=['user'], name='idx_user'),
+            models.Index(fields=['activity_type'], name='idx_activity'),
+            models.Index(fields=['content_type', 'content_code', 'activity_type'], name='idx_content_activity'),
+            models.Index(fields=['reg_date_time'], name='idx_regDateTime'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'content_type', 'content_code', 'activity_type'],
+                name='uq_user_content_activity',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user_id} {self.activity_type} {self.content_type}:{self.content_code}"
+
+
 def generate_inde_user_id():
     """
     IndeUser ID 생성
