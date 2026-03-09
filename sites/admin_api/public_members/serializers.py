@@ -42,6 +42,7 @@ class PublicMemberCreateUpdateSerializer(serializers.ModelSerializer):
     """생성/수정: password는 write_only, 저장 시 set_password 사용. 관리자용 status/탈퇴 필드 수정 가능."""
     password = serializers.CharField(required=False, write_only=True, allow_blank=True, min_length=8)
     status = serializers.ChoiceField(choices=PublicMemberShip.STATUS_CHOICES, required=False)
+    region_type = serializers.CharField(required=False, allow_blank=True, max_length=50)
     withdraw_reason = serializers.CharField(required=False, allow_blank=True)
     withdraw_detail_reason = serializers.CharField(required=False, allow_blank=True)
 

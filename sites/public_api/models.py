@@ -31,11 +31,6 @@ class PublicMemberShip(models.Model):
         ('NAVER', '네이버'),
         ('GOOGLE', '구글'),
     ]
-    REGION_TYPE_CHOICES = [
-        ('DOMESTIC', '국내'),
-        ('FOREIGN', '해외'),
-    ]
-
     member_sid = models.AutoField(primary_key=True, verbose_name='회원 SID')  # 1부터 자동 증가
     email = models.EmailField(unique=True, verbose_name='이메일')
     password = models.CharField(max_length=255, null=True, blank=True, verbose_name='비밀번호')  # 소셜만 가입 시 null
@@ -57,7 +52,7 @@ class PublicMemberShip(models.Model):
         validators=[MinValueValidator(1), MaxValueValidator(31)]
     )
     region_type = models.CharField(
-        max_length=10, choices=REGION_TYPE_CHOICES, null=True, blank=True, verbose_name='지역 타입'
+        max_length=50, null=True, blank=True, verbose_name='지역 타입'
     )
     region_domestic = models.CharField(max_length=100, null=True, blank=True, verbose_name='국내 지역')
     region_foreign = models.CharField(max_length=100, null=True, blank=True, verbose_name='해외 지역')
