@@ -22,10 +22,12 @@ INSTALLED_APPS = [
     "api",  # 관리자 회원 모델 포함
     "sites.admin_api",
     "sites.admin_api.articles",  # 아티클 관리 앱
+    "sites.admin_api.content_author",  # 콘텐츠 저자 관리 앱
     "sites.public_api",
     "apps.notice",
     "apps.faq",
     "apps.inquiry",
+    "apps.content_question",
 ]
 
 MIDDLEWARE = [

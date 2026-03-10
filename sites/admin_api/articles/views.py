@@ -11,6 +11,7 @@ from datetime import datetime
 import logging
 
 from sites.admin_api.articles.models import Article
+from sites.admin_api.content_author.models import ContentAuthor
 
 logger = logging.getLogger(__name__)
 from sites.admin_api.articles.serializers import (
@@ -205,10 +206,25 @@ class ArticleDetailView(APIView):
             article = Article.objects.get(id=id, deletedAt__isnull=True)
             
             # request.data에서 id 제거 (URL 파라미터로 받음)
-            # author: 프론트에서 보내준 값 그대로 반영 (request.user로 덮어쓰지 않음)
+            # author: author_id 있으면 ContentAuthor.name으로 동기화, 없으면 프론트 값 그대로
             update_data = request.data.copy()
             if 'id' in update_data:
                 del update_data['id']
+            author_id_raw = update_data.get('author_id')
+            if author_id_raw == '':
+                update_data['author_id'] = None
+                author_id_raw = None
+            if author_id_raw is not None and author_id_raw != '':
+                try:
+                    if hasattr(author_id_raw, 'name'):
+                        update_data['author'] = author_id_raw.name
+                    else:
+                        pk = int(author_id_raw) if isinstance(author_id_raw, (str, int)) else getattr(author_id_raw, 'author_id', getattr(author_id_raw, 'pk', None))
+                        if pk is not None:
+                            content_author = ContentAuthor.objects.get(author_id=pk)
+                            update_data['author'] = content_author.name
+                except (ContentAuthor.DoesNotExist, ValueError, TypeError):
+                    pass
             
             # 기존 이미지 키 추출 (나중에 삭제하기 위해)
             old_content = article.content
@@ -438,7 +454,6 @@ class ArticleCreateView(APIView):
                         'status': '발행 상태',
                         'isEditorPick': '에디터 추천',
                         'tags': '태그',
-                        'questions': '질문',
                         'previewLength': '미리보기 길이',
                         'scheduledAt': '예약 발행 일시',
                     }
@@ -459,9 +474,23 @@ class ArticleCreateView(APIView):
                 )
             
             # 아티클 생성 (임시로 ID를 얻기 위해)
-            # 먼저 아티클을 생성하고, 이미지 처리를 위해 ID가 필요
-            # author: 로그인 여부와 관계없이 프론트에서 보내준 값 그대로 저장 (request.user로 덮어쓰지 않음)
+            # author_id 있으면 ContentAuthor.name으로 author 동기화
             validated_data = serializer.validated_data.copy()
+            author_id_raw = validated_data.get('author_id')
+            if author_id_raw == '':
+                validated_data['author_id'] = None
+                author_id_raw = None
+            if author_id_raw is not None:
+                try:
+                    if hasattr(author_id_raw, 'name'):
+                        validated_data['author'] = author_id_raw.name
+                    else:
+                        pk = int(author_id_raw) if isinstance(author_id_raw, (str, int)) else getattr(author_id_raw, 'author_id', getattr(author_id_raw, 'pk', None))
+                        if pk is not None:
+                            content_author = ContentAuthor.objects.get(author_id=pk)
+                            validated_data['author'] = content_author.name
+                except (ContentAuthor.DoesNotExist, ValueError, TypeError):
+                    pass
             content = validated_data.get('content', '')
             # 원본 request.data에서 thumbnail 가져오기 (base64 데이터일 수 있음)
             # 'thumbnail' 키가 있는지 확인 (프론트엔드에서 명시적으로 보낸 경우)

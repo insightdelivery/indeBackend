@@ -18,6 +18,7 @@ class ArticleSerializer(serializers.ModelSerializer):
             'thumbnail',
             'category',
             'author',
+            'author_id',
             'authorAffiliation',
             'visibility',
             'status',
@@ -28,7 +29,6 @@ class ArticleSerializer(serializers.ModelSerializer):
             'highlightCount',
             'questionCount',
             'tags',
-            'questions',
             'previewLength',
             'scheduledAt',
             'deletedAt',
@@ -75,6 +75,7 @@ class ArticleListSerializer(serializers.ModelSerializer):
             'thumbnail',
             'category',
             'author',
+            'author_id',
             'authorAffiliation',
             'visibility',
             'status',
@@ -96,7 +97,7 @@ class ArticleListSerializer(serializers.ModelSerializer):
 
 
 class ArticleCreateSerializer(serializers.ModelSerializer):
-    """아티클 생성 시리얼라이저"""
+    """아티클 생성 시리얼라이저. author_id 선택 시 author는 ContentAuthor.name으로 자동 설정됨."""
     
     class Meta:
         model = Article
@@ -107,15 +108,23 @@ class ArticleCreateSerializer(serializers.ModelSerializer):
             'thumbnail',
             'category',
             'author',
+            'author_id',
             'authorAffiliation',
             'visibility',
             'status',
             'isEditorPick',
             'tags',
-            'questions',
             'previewLength',
             'scheduledAt',
         ]
+    
+    def validate(self, attrs):
+        """author_id 없으면 author(문자열) 필수."""
+        author_id = attrs.get('author_id')
+        author = attrs.get('author') or (self.initial_data.get('author') if self.initial_data else None)
+        if not author_id and (not author or (isinstance(author, str) and not author.strip())):
+            raise serializers.ValidationError({'author': '작성자(에디터)를 선택하거나 작성자명을 입력해주세요.'})
+        return attrs
     
     def validate_title(self, value):
         """제목 검증"""
@@ -158,7 +167,7 @@ class ArticleCreateSerializer(serializers.ModelSerializer):
 
 
 class ArticleUpdateSerializer(serializers.ModelSerializer):
-    """아티클 수정 시리얼라이저"""
+    """아티클 수정 시리얼라이저. author_id 선택 시 author는 ContentAuthor.name으로 자동 설정됨."""
     
     class Meta:
         model = Article
@@ -169,12 +178,12 @@ class ArticleUpdateSerializer(serializers.ModelSerializer):
             'thumbnail',
             'category',
             'author',
+            'author_id',
             'authorAffiliation',
             'visibility',
             'status',
             'isEditorPick',
             'tags',
-            'questions',
             'previewLength',
             'scheduledAt',
         ]
@@ -184,6 +193,7 @@ class ArticleUpdateSerializer(serializers.ModelSerializer):
             'content': {'required': False},
             'category': {'required': False},
             'author': {'required': False},
+            'author_id': {'required': False},
         }
     
     def validate_title(self, value):
@@ -205,9 +215,9 @@ class ArticleUpdateSerializer(serializers.ModelSerializer):
         return value.strip() if value else value
     
     def validate_author(self, value):
-        """작성자 검증"""
-        if value is not None and not value.strip():
-            raise serializers.ValidationError('작성자는 필수입니다.')
+        """작성자 검증 (author_id 없을 때만 비어 있으면 안 됨, validate()에서 처리)"""
+        if value is not None and value.strip() == '':
+            return value
         return value.strip() if value else value
     
     def validate_visibility(self, value):

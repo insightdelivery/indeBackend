@@ -18,7 +18,16 @@ class Article(models.Model):
     
     # 분류 및 작성자
     category = models.CharField(max_length=50, verbose_name='카테고리 (sysCodeSid)')
-    author = models.CharField(max_length=100, verbose_name='작성자')
+    author = models.CharField(max_length=100, verbose_name='작성자')  # 표시용. author_id 있으면 ContentAuthor.name 과 동기화
+    author_id = models.ForeignKey(
+        'content_author.ContentAuthor',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='articles',
+        db_column='author_id',
+        verbose_name='작성자(콘텐츠 저자)',
+    )
     authorAffiliation = models.CharField(max_length=200, null=True, blank=True, verbose_name='작성자 소속')
     
     # 공개 설정
@@ -42,9 +51,8 @@ class Article(models.Model):
     highlightCount = models.IntegerField(default=0, verbose_name='하이라이트 수')
     questionCount = models.IntegerField(default=0, verbose_name='질문 수')
     
-    # 추가 정보
+    # 추가 정보 (질문은 content_question 테이블로 관리)
     tags = models.JSONField(default=list, blank=True, verbose_name='태그 목록')
-    questions = models.JSONField(default=list, blank=True, verbose_name='질문 목록')
     previewLength = models.IntegerField(null=True, blank=True, default=50, verbose_name='미리보기 길이')
     scheduledAt = models.DateTimeField(null=True, blank=True, verbose_name='예약 발행 일시')
     

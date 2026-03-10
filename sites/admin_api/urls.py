@@ -57,6 +57,8 @@ def get_urlpatterns():
         
         # 아티클 관리 API
         path('article/', include('sites.admin_api.articles.urls')),
+        # 콘텐츠 저자 관리 API
+        path('authors/', include('sites.admin_api.content_author.urls')),
         
         # 비디오/세미나 관리 API
         path('video/', include('sites.admin_api.video.urls')),
@@ -64,6 +66,8 @@ def get_urlpatterns():
         # 파일 관리 API (S3)
         path('files/', include('sites.admin_api.files.urls')),
         
+        # 콘텐츠 질문 관리 API (ARTICLE/VIDEO/SEMINAR별 질문 CRUD)
+        path('content/questions/', include('apps.content_question.admin_urls')),
         # 게시판 관리 API (공지/FAQ/1:1문의)
         path('board/', include('sites.admin_api.board.urls')),
         # 공개 회원(PublicMemberShip) 관리 API
