@@ -1,5 +1,5 @@
 """
-공개용 아티클 목록 API (frontend_www)
+공개용 아티클 목록/상세 API (frontend_www)
 - 인증 불필요(AllowAny)
 - status = 즉시발행(sysCode SYS26209B021) 또는 리터럴 'published', 삭제되지 않은 글만 조회
 - list-api.me 규칙 준수
@@ -12,9 +12,11 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 
 from sites.admin_api.articles.models import Article
-
-from sites.admin_api.articles.serializers import ArticleListSerializer
-from sites.admin_api.articles.utils import get_presigned_thumbnail_url
+from sites.admin_api.articles.serializers import ArticleListSerializer, ArticleSerializer
+from sites.admin_api.articles.utils import (
+    get_presigned_thumbnail_url,
+    convert_s3_urls_to_presigned,
+)
 from core.utils import create_success_response, create_error_response
 
 
@@ -84,5 +86,49 @@ class PublicArticleListView(APIView):
         except Exception as e:
             return Response(
                 create_error_response(f'아티클 목록 조회 실패: {str(e)}'),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class PublicArticleDetailView(APIView):
+    """
+    공개 아티클 상세 조회
+    GET /api/articles/<id>/
+    - 인증 불필요
+    - 발행된 글만 조회 (status SYS26209B021 또는 published, 삭제 미포함)
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request, id):
+        try:
+            article = Article.objects.filter(
+                id=id,
+                deletedAt__isnull=True,
+            ).filter(
+                Q(status='SYS26209B021') | Q(status='published'),
+            ).first()
+
+            if not article:
+                return Response(
+                    create_error_response('아티클을 찾을 수 없습니다.', '01'),
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            serializer = ArticleSerializer(article)
+            data = serializer.data.copy()
+
+            if data.get('content'):
+                data['content'] = convert_s3_urls_to_presigned(data['content'], expires_in=3600)
+            if data.get('thumbnail'):
+                data['thumbnail'] = get_presigned_thumbnail_url(data['thumbnail'], expires_in=3600)
+
+            return Response(
+                create_success_response(data, '아티클 조회 성공'),
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            return Response(
+                create_error_response(f'아티클 조회 실패: {str(e)}'),
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

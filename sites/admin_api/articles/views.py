@@ -28,7 +28,7 @@ from sites.admin_api.articles.utils import (
     get_presigned_thumbnail_url,
 )
 from sites.admin_api.authentication import AdminJWTAuthentication
-from core.utils import create_success_response, create_error_response
+from core.utils import create_success_response, create_error_response, create_api_response
 from core.s3_storage import S3Storage, get_s3_storage
 
 
@@ -205,6 +205,7 @@ class ArticleDetailView(APIView):
             article = Article.objects.get(id=id, deletedAt__isnull=True)
             
             # request.data에서 id 제거 (URL 파라미터로 받음)
+            # author: 프론트에서 보내준 값 그대로 반영 (request.user로 덮어쓰지 않음)
             update_data = request.data.copy()
             if 'id' in update_data:
                 del update_data['id']
@@ -422,16 +423,44 @@ class ArticleCreateView(APIView):
             serializer = ArticleCreateSerializer(data=request.data)
             
             if not serializer.is_valid():
+                error_message = '입력값이 올바르지 않습니다.'
+                if serializer.errors:
+                    error_details = []
+                    field_names = {
+                        'title': '제목',
+                        'subtitle': '부제목',
+                        'content': '본문 내용',
+                        'thumbnail': '썸네일',
+                        'category': '카테고리',
+                        'author': '작성자',
+                        'authorAffiliation': '작성자 소속',
+                        'visibility': '공개 범위',
+                        'status': '발행 상태',
+                        'isEditorPick': '에디터 추천',
+                        'tags': '태그',
+                        'questions': '질문',
+                        'previewLength': '미리보기 길이',
+                        'scheduledAt': '예약 발행 일시',
+                    }
+                    for field, errors in serializer.errors.items():
+                        name = field_names.get(field, field)
+                        if isinstance(errors, list):
+                            error_details.append(f"{name}: {' '.join(str(e) for e in errors)}")
+                        else:
+                            error_details.append(f"{name}: {str(errors)}")
+                    if error_details:
+                        error_message = ' '.join(error_details)
                 return Response(
-                    create_error_response(
-                        '입력값이 올바르지 않습니다.',
-                        '01'
+                    create_api_response(
+                        False, '01', error_message,
+                        result={'errors': serializer.errors}
                     ),
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
             # 아티클 생성 (임시로 ID를 얻기 위해)
             # 먼저 아티클을 생성하고, 이미지 처리를 위해 ID가 필요
+            # author: 로그인 여부와 관계없이 프론트에서 보내준 값 그대로 저장 (request.user로 덮어쓰지 않음)
             validated_data = serializer.validated_data.copy()
             content = validated_data.get('content', '')
             # 원본 request.data에서 thumbnail 가져오기 (base64 데이터일 수 있음)
