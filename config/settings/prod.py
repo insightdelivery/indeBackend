@@ -36,6 +36,7 @@ DATABASES['default'].update({
 # 프로덕션 환경 도메인
 ALLOWED_HOSTS = [
     'api.inde.kr',
+    '3.37.77.154',
     'admin-api.inde.kr',  # 관리자 API 도메인
 ]
 
