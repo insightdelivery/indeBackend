@@ -158,11 +158,7 @@ class ArticleCreateSerializer(serializers.ModelSerializer):
         # base64 데이터인 경우 (S3에 업로드될 예정이므로 검증 건너뛰기)
         if value.startswith('data:image'):
             return value
-        
-        # URL인 경우만 길이 검증
-        if len(value) > 500:
-            raise serializers.ValidationError('썸네일 URL은 500자를 초과할 수 없습니다.')
-        
+                
         return value
 
 
@@ -240,10 +236,6 @@ class ArticleUpdateSerializer(serializers.ModelSerializer):
         # base64 데이터인 경우 (S3에 업로드될 예정이므로 검증 건너뛰기)
         if value.startswith('data:image'):
             return value
-        
-        # URL인 경우만 길이 검증
-        if len(value) > 500:
-            raise serializers.ValidationError('썸네일 URL은 500자를 초과할 수 없습니다.')
-        
+                
         return value
 
