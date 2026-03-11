@@ -27,6 +27,7 @@ from sites.admin_api.articles.utils import (
     extract_s3_keys_from_content,
     convert_s3_urls_to_presigned,
     get_presigned_thumbnail_url,
+    normalize_empty_p_tags,
 )
 from sites.admin_api.authentication import AdminJWTAuthentication
 from core.utils import create_success_response, create_error_response, create_api_response
@@ -210,6 +211,9 @@ class ArticleDetailView(APIView):
             update_data = request.data.copy()
             if 'id' in update_data:
                 del update_data['id']
+            # content 내 빈 p 태그(<p></p>) → <br />로 치환 후 저장
+            if update_data.get('content'):
+                update_data['content'] = normalize_empty_p_tags(update_data['content'])
             author_id_raw = update_data.get('author_id')
             if author_id_raw == '':
                 update_data['author_id'] = None
@@ -471,6 +475,9 @@ class ArticleCreateView(APIView):
                 except (ContentAuthor.DoesNotExist, ValueError, TypeError):
                     pass
             content = validated_data.get('content', '')
+            if content:
+                content = normalize_empty_p_tags(content)
+                validated_data['content'] = content
             # 원본 request.data에서 thumbnail 가져오기 (base64 데이터일 수 있음)
             # 'thumbnail' 키가 있는지 확인 (프론트엔드에서 명시적으로 보낸 경우)
             thumbnail_data_from_request = None
