@@ -312,7 +312,7 @@ class ArticleDetailView(APIView):
                 else:
                     logger.info(f"썸네일 업데이트 처리 시작. original_thumbnail 시작: {original_thumbnail[:50] if original_thumbnail else 'None'}..., old_thumbnail: {old_thumbnail[:50] if old_thumbnail else 'None'}...")
                     
-                    # base64 데이터인 경우 S3에 업로드
+                    # base64 데이터인 경우만 S3에 업로드 (URL 직접 입력 미지원)
                     if original_thumbnail.startswith('data:image'):
                         logger.info("base64 썸네일 데이터를 S3에 업로드합니다.")
                         thumbnail_url = upload_thumbnail_to_s3(original_thumbnail, article.id)
@@ -323,11 +323,8 @@ class ArticleDetailView(APIView):
                             
                             # 기존 썸네일 삭제 (새로 업로드한 썸네일과 다른 키인 경우에만)
                             if old_thumbnail_key:
-                                # 새로 업로드한 썸네일의 키 추출
                                 new_thumbnail_key = S3Storage.extract_key_from_url(thumbnail_url)
                                 logger.info(f"기존 썸네일 키: {old_thumbnail_key}, 새 썸네일 키: {new_thumbnail_key}")
-                                
-                                # 기존 썸네일과 새 썸네일이 다른 경우에만 삭제
                                 if old_thumbnail_key != new_thumbnail_key:
                                     s3_storage = get_s3_storage()
                                     try:
@@ -339,25 +336,7 @@ class ArticleDetailView(APIView):
                                     logger.info(f"기존 썸네일과 새 썸네일이 동일한 키이므로 삭제하지 않습니다: {old_thumbnail_key}")
                         else:
                             logger.error("썸네일 업로드 실패: upload_thumbnail_to_s3가 None을 반환했습니다.")
-                    # URL인 경우 (이미 S3 URL이거나 다른 URL)
-                    else:
-                        # 기존 썸네일과 다른 URL인 경우에만 업데이트
-                        if original_thumbnail != old_thumbnail:
-                            logger.info(f"썸네일 URL 업데이트: {original_thumbnail}")
-                            article.thumbnail = original_thumbnail
-                            article.save(update_fields=['thumbnail'])
-                            
-                            # 기존 썸네일이 S3 URL이었고, 새로운 URL이 다른 S3 URL인 경우 삭제
-                            if old_thumbnail_key and old_thumbnail and old_thumbnail.startswith('https://') and 's3' in old_thumbnail:
-                                # 새로운 URL도 S3 URL이고 기존 키와 다른 경우에만 삭제
-                                new_thumbnail_key = S3Storage.extract_key_from_url(original_thumbnail) if original_thumbnail.startswith('https://') and 's3' in original_thumbnail else None
-                                if new_thumbnail_key and new_thumbnail_key != old_thumbnail_key:
-                                    s3_storage = get_s3_storage()
-                                    try:
-                                        s3_storage.delete_file(old_thumbnail_key)
-                                        logger.info(f"기존 썸네일 삭제 성공: {old_thumbnail_key}")
-                                    except Exception as e:
-                                        logger.error(f"기존 썸네일 삭제 실패: {e}")
+                    # URL은 serializer에서 거부됨 (이미지 업로드만 허용)
             
             # 결과 시리얼라이저
             result_serializer = ArticleSerializer(article)
@@ -499,14 +478,11 @@ class ArticleCreateView(APIView):
                 thumbnail_data_from_request = request.data.get('thumbnail')
                 logger.info(f"아티클 등록 시 썸네일 데이터 받음. 길이: {len(thumbnail_data_from_request) if thumbnail_data_from_request else 0}, 시작: {thumbnail_data_from_request[:50] if thumbnail_data_from_request else 'None'}...")
             
-            # base64 썸네일인 경우 validated_data에서 제거 (나중에 S3 업로드 후 저장)
-            # URL인 경우만 validated_data에 포함
+            # 썸네일은 이미지 업로드(base64)만 허용. base64는 S3 업로드 후 저장
             if thumbnail_data_from_request and thumbnail_data_from_request.startswith('data:image'):
-                validated_data['thumbnail'] = None  # base64는 나중에 처리
-            elif thumbnail_data_from_request:
-                validated_data['thumbnail'] = thumbnail_data_from_request  # URL인 경우
+                validated_data['thumbnail'] = None  # base64는 나중에 S3 업로드 후 저장
             else:
-                validated_data['thumbnail'] = None  # 썸네일이 없는 경우
+                validated_data['thumbnail'] = None  # 없거나 URL은 허용하지 않음
             
             # 아티클 생성
             article = Article.objects.create(**validated_data)

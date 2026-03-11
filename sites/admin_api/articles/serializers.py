@@ -98,7 +98,9 @@ class ArticleListSerializer(serializers.ModelSerializer):
 
 class ArticleCreateSerializer(serializers.ModelSerializer):
     """아티클 생성 시리얼라이저. author_id 선택 시 author는 ContentAuthor.name으로 자동 설정됨."""
-    
+    # 썸네일: 이미지 업로드(base64)만 허용. 글자 수 검증 없음(모델 max_length 상속 안 함)
+    thumbnail = serializers.CharField(required=False, allow_blank=True)
+
     class Meta:
         model = Article
         fields = [
@@ -151,20 +153,21 @@ class ArticleCreateSerializer(serializers.ModelSerializer):
         return value.strip()
     
     def validate_thumbnail(self, value):
-        """썸네일 검증 - base64 데이터는 검증 건너뛰기"""
+        """썸네일 검증 - 이미지 업로드(base64)만 허용, URL 직접 입력 불가"""
         if not value:
             return value
-        
-        # base64 데이터인 경우 (S3에 업로드될 예정이므로 검증 건너뛰기)
         if value.startswith('data:image'):
             return value
-                
-        return value
+        raise serializers.ValidationError(
+            '썸네일은 이미지 업로드만 가능합니다. URL 직접 입력은 지원하지 않습니다.'
+        )
 
 
 class ArticleUpdateSerializer(serializers.ModelSerializer):
     """아티클 수정 시리얼라이저. author_id 선택 시 author는 ContentAuthor.name으로 자동 설정됨."""
-    
+    # 썸네일: 이미지 업로드(base64)만 허용. 글자 수 검증 없음
+    thumbnail = serializers.CharField(required=False, allow_blank=True)
+
     class Meta:
         model = Article
         fields = [
@@ -229,13 +232,12 @@ class ArticleUpdateSerializer(serializers.ModelSerializer):
         return value.strip() if value else value
     
     def validate_thumbnail(self, value):
-        """썸네일 검증 - base64 데이터는 검증 건너뛰기"""
+        """썸네일 검증 - 이미지 업로드(base64)만 허용, URL 직접 입력 불가"""
         if not value:
             return value
-        
-        # base64 데이터인 경우 (S3에 업로드될 예정이므로 검증 건너뛰기)
         if value.startswith('data:image'):
             return value
-                
-        return value
+        raise serializers.ValidationError(
+            '썸네일은 이미지 업로드만 가능합니다. URL 직접 입력은 지원하지 않습니다.'
+        )
 
