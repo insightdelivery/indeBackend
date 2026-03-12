@@ -1,5 +1,5 @@
-# config/settings/production.py
-from .local import *  # local 설정을 기반으로 시작 (원하면 base.py로 분리해도 됨)
+# config/production.py (레거시: ENV_MODE=production + config.settings.base 사용 권장)
+from .settings.base import *
 
 import os
 from pathlib import Path

@@ -1,13 +1,29 @@
 import os
 
 from pathlib import Path
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "change-me-in-production")
-DEBUG = os.getenv("DJANGO_DEBUG", "0") == "1"
+# ENV_MODE에 따라 하나의 .env 파일만 로드 (실행 시 ENV_MODE=local|develop|production 지정)
+ENV_MODE = os.getenv("ENV_MODE", "local").lower()
+env_map = {
+    "local": ".env.local",
+    "develop": ".env.develop",
+    "production": ".env.production",
+}
+env_file = env_map.get(ENV_MODE, ".env.local")
+env_path = BASE_DIR / "env" / env_file
+if env_path.exists():
+    load_dotenv(str(env_path), override=True)
 
-ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if os.getenv("DJANGO_ALLOWED_HOSTS") else []
+SECRET_KEY = os.getenv("SECRET_KEY") or os.getenv("DJANGO_SECRET_KEY", "change-me-in-production")
+DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes") or os.getenv("DJANGO_DEBUG", "0") == "1"
+
+_allowed = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()]
+if not _allowed and os.getenv("DJANGO_ALLOWED_HOSTS"):
+    _allowed = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if h.strip()]
+ALLOWED_HOSTS = _allowed if _allowed else ["localhost", "127.0.0.1"]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -132,8 +148,17 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler',
 }
 
-# CORS 설정
-CORS_ALLOWED_ORIGINS = [
+# CORS 설정 (env에 있으면 사용, 없으면 기본 목록). Django 4.0+ 요구: scheme 필수.
+def _normalize_origin(o):
+    o = (o or "").strip()
+    if o and not o.startswith(("http://", "https://")):
+        return "http://" + o
+    return o
+
+
+_cors_raw = [h.strip() for h in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if h.strip()]
+_cors_origins = [_normalize_origin(o) for o in _cors_raw if _normalize_origin(o)]
+CORS_ALLOWED_ORIGINS = _cors_origins if _cors_origins else [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://dev.inde.kr",
@@ -187,11 +212,16 @@ CORS_ALLOW_HEADERS = [
     "tus-resumable",
 ]
 
-# CSRF 신뢰할 수 있는 Origin 설정
-CSRF_TRUSTED_ORIGINS = [
+# CSRF 신뢰할 수 있는 Origin 설정 (env에서 읽거나 기본값). Django 4.0+ 요구: scheme 필수.
+_csrf_raw = [h.strip() for h in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if h.strip()]
+_csrf_origins = [_normalize_origin(o) for o in _csrf_raw if _normalize_origin(o)]
+CSRF_TRUSTED_ORIGINS = _csrf_origins if _csrf_origins else [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+
+# OAuth/인증 메일 등 프론트 리다이렉트 베이스 URL
+PUBLIC_VERIFY_BASE_URL = (os.getenv("PUBLIC_VERIFY_BASE_URL") or "").strip().rstrip("/")
 
 # JWT 설정
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
@@ -262,6 +292,11 @@ LOGGING = {
             'propagate': False,
         },
         'core': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'sites.public_api': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': False,

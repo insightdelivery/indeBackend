@@ -21,25 +21,25 @@ SITE_MAP = {
     "localhost:8000": {
         "slug": "admin_api",
         "urlconf": "sites.admin_api.urls",
-        "cors": ["http://localhost:3000", "https://dev.inde.kr", "http://dev.inde.kr"],
+        "cors": ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3001", "https://dev.inde.kr", "http://dev.inde.kr"],
         "media_prefix": "local",
     },
     "localhost:8001": {
         "slug": "public_api",
         "urlconf": "sites.public_api.urls",
-        "cors": ["http://localhost:3000", "https://dev.inde.kr", "http://dev.inde.kr"],
+        "cors": ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3001", "https://dev.inde.kr", "http://dev.inde.kr"],
         "media_prefix": "local",
     },
     "127.0.0.1:8000": {
         "slug": "admin_api",
         "urlconf": "sites.admin_api.urls",
-        "cors": ["http://localhost:3000", "https://dev.inde.kr", "http://dev.inde.kr"],
+        "cors": ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3001", "https://dev.inde.kr", "http://dev.inde.kr"],
         "media_prefix": "local",
     },
     "127.0.0.1:8001": {
         "slug": "public_api",
         "urlconf": "sites.public_api.urls",
-        "cors": ["http://localhost:3000", "https://dev.inde.kr", "http://dev.inde.kr"],
+        "cors": ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3001", "https://dev.inde.kr", "http://dev.inde.kr"],
         "media_prefix": "local",
     },
 }

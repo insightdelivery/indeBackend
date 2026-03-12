@@ -14,39 +14,24 @@ class Command(BaseCommand):
     help = 'S3 설정 및 버킷 정보 확인'
 
     def handle(self, *args, **options):
-        # env/.env 파일의 ENV_MODE에 따라 적절한 .env 파일 로드
+        # ENV_MODE에 따라 .env.local / .env.develop / .env.production 중 하나 로드 (base.py와 동일 규칙)
         base_dir = Path(settings.BASE_DIR) if hasattr(settings, 'BASE_DIR') else Path(__file__).resolve().parents[3]
-        
         from dotenv import load_dotenv
-        
-        # 1. 먼저 메인 .env 파일 로드하여 ENV_MODE 확인
-        main_env_path = base_dir / 'env' / '.env'
-        if main_env_path.exists():
-            load_dotenv(main_env_path)
-            self.stdout.write(f"✅ 메인 환경 변수 파일 로드: {main_env_path}")
-        else:
-            self.stdout.write(self.style.WARNING(f"⚠️  메인 환경 변수 파일을 찾을 수 없습니다: {main_env_path}"))
-        
-        # 2. ENV_MODE 확인
+
         env_mode = os.getenv('ENV_MODE', 'local').lower()
+        env_map = {"local": ".env.local", "develop": ".env.develop", "production": ".env.production"}
+        env_file = env_map.get(env_mode, ".env.local")
+        env_file_path = base_dir / 'env' / env_file
         self.stdout.write(f"ENV_MODE: {env_mode}")
-        
-        # 3. ENV_MODE에 따라 적절한 환경 변수 파일 로드
-        if env_mode == 'production':
-            env_file_path = base_dir / 'env' / '.env.production'
-            env_name = 'production'
-        else:  # local 또는 기본값
-            env_file_path = base_dir / 'env' / '.env.local'
-            env_name = 'local'
-        
+
         if env_file_path.exists():
-            load_dotenv(env_file_path, override=True)  # override=True로 메인 .env의 값을 덮어씀
-            self.stdout.write(f"✅ {env_name} 환경 변수 파일 로드: {env_file_path}")
+            load_dotenv(env_file_path)
+            self.stdout.write(f"✅ 환경 변수 파일 로드: {env_file_path}")
         else:
-            self.stdout.write(self.style.WARNING(f"⚠️  {env_name} 환경 변수 파일을 찾을 수 없습니다: {env_file_path}"))
+            self.stdout.write(self.style.WARNING(f"⚠️  환경 변수 파일을 찾을 수 없습니다: {env_file_path}"))
         
         # 설정 모듈 확인
-        settings_module = os.getenv('DJANGO_SETTINGS_MODULE', 'config.settings.local')
+        settings_module = os.getenv('DJANGO_SETTINGS_MODULE', 'config.settings.base')
         self.stdout.write(f"현재 설정 모듈: {settings_module}")
         
         self.stdout.write("=" * 60)

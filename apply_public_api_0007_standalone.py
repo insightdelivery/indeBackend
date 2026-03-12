@@ -11,7 +11,7 @@ public_api 0007 마이그레이션을 migrate 없이 적용하는 스크립트.
 import os
 import sys
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.local")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.base")
 
 import django
 django.setup()

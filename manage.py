@@ -4,8 +4,8 @@ import sys
 
 
 def main() -> None:
-    # 로컬 개발 기본 설정을 사용합니다.
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.local")
+    # settings는 base만 사용. 환경별 차이는 ENV_MODE + .env 파일로 처리.
+    os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings.base"
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

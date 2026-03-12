@@ -3,12 +3,12 @@
 public_api 0004 마이그레이션을 migrate 없이 적용하는 스크립트.
 - DB에 이미 테이블이 있고, migrate 시 post_migrate(auth_permission 등) 오류가 날 때 사용.
 - publicMemberShip: member_sid -> INT AUTO_INCREMENT, sns_provider_uid 컬럼 추가.
-- 실행: cd backend && source venv/bin/activate && DJANGO_SETTINGS_MODULE=config.settings.local python apply_public_api_0004_standalone.py
+- 실행: cd backend && source venv/bin/activate && ENV_MODE=local python apply_public_api_0004_standalone.py
 """
 import os
 import sys
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.local")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.base")
 
 import django
 django.setup()
