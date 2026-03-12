@@ -69,6 +69,8 @@ urlpatterns = [
     path('api/inquiries/', include('apps.inquiry.urls')),
     # 공개 아티클 목록 (frontend_www)
     path('api/articles/', include('sites.public_api.article_urls')),
+    # 아티클 하이라이트 (articleHightlightPlan.md)
+    path('api/highlights/', include('apps.highlight.urls')),
     # 콘텐츠 질문/답변 (공개)
     path('api/content/', include('apps.content_question.public_urls')),
     # 라이브러리 사용자 활동 (userPublicActiviteLog.md)

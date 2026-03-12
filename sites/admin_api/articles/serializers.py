@@ -151,16 +151,6 @@ class ArticleCreateSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError('작성자는 필수입니다.')
         return value.strip()
-    
-    def validate_thumbnail(self, value):
-        """썸네일 검증 - 이미지 업로드(base64)만 허용, URL 직접 입력 불가"""
-        if not value:
-            return value
-        if value.startswith('data:image'):
-            return value
-        raise serializers.ValidationError(
-            '썸네일은 이미지 업로드만 가능합니다. URL 직접 입력은 지원하지 않습니다.'
-        )
 
 
 class ArticleUpdateSerializer(serializers.ModelSerializer):
@@ -230,14 +220,4 @@ class ArticleUpdateSerializer(serializers.ModelSerializer):
         if value is not None and not value.strip():
             raise serializers.ValidationError('발행 상태는 필수입니다.')
         return value.strip() if value else value
-    
-    def validate_thumbnail(self, value):
-        """썸네일 검증 - 이미지 업로드(base64)만 허용, URL 직접 입력 불가"""
-        if not value:
-            return value
-        if value.startswith('data:image'):
-            return value
-        raise serializers.ValidationError(
-            '썸네일은 이미지 업로드만 가능합니다. URL 직접 입력은 지원하지 않습니다.'
-        )
 
