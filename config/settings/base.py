@@ -5,17 +5,26 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# ENV_MODE에 따라 하나의 .env 파일만 로드 (실행 시 ENV_MODE=local|develop|production 지정)
+# 1️⃣ 먼저 공통 .env 로드 (ENV_MODE 읽기 위해)
+base_env_path = BASE_DIR / "env" / ".env"
+if base_env_path.exists():
+    load_dotenv(base_env_path)
+
+# 2️⃣ ENV_MODE 결정
 ENV_MODE = os.getenv("ENV_MODE", "local").lower()
+
 env_map = {
     "local": ".env.local",
     "develop": ".env.develop",
     "production": ".env.production",
 }
+
 env_file = env_map.get(ENV_MODE, ".env.local")
 env_path = BASE_DIR / "env" / env_file
+
+# 3️⃣ 환경별 env 로드
 if env_path.exists():
-    load_dotenv(str(env_path), override=True)
+    load_dotenv(env_path, override=True)
 
 SECRET_KEY = os.getenv("SECRET_KEY") or os.getenv("DJANGO_SECRET_KEY", "change-me-in-production")
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes") or os.getenv("DJANGO_DEBUG", "0") == "1"
