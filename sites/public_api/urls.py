@@ -8,6 +8,7 @@ from rest_framework import status
 from sites.public_api.views import RegisterView, LoginView, VerifyEmailView, ResendVerificationEmailView, MeView, ProfileCompleteView, TokenRefreshView
 from sites.public_api.syscode_views import SysCodeByParentView
 from sites.public_api.google_oauth import GoogleRedirectView, GoogleCallbackView
+from sites.public_api.naver_oauth import NaverRedirectView, NaverCallbackView
 from sites.public_api.library_useractivity_views import (
     LibraryUserActivityView,
     LibraryUserActivityRating,
@@ -56,6 +57,10 @@ urlpatterns = [
     path('auth/google/redirect', GoogleRedirectView.as_view(), name='public_api_google_redirect_no_slash'),
     path('auth/google/callback/', GoogleCallbackView.as_view(), name='public_api_google_callback'),
     path('auth/google/callback', GoogleCallbackView.as_view(), name='public_api_google_callback_no_slash'),
+    path('auth/naver/redirect/', NaverRedirectView.as_view(), name='public_api_naver_redirect'),
+    path('auth/naver/redirect', NaverRedirectView.as_view(), name='public_api_naver_redirect_no_slash'),
+    path('auth/naver/callback/', NaverCallbackView.as_view(), name='public_api_naver_callback'),
+    path('auth/naver/callback', NaverCallbackView.as_view(), name='public_api_naver_callback_no_slash'),
     path('me/', MeView.as_view(), name='public_api_me'),
     path('me', MeView.as_view(), name='public_api_me_no_slash'),
     path('profile/complete/', ProfileCompleteView.as_view(), name='public_api_profile_complete'),
