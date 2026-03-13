@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
 from sites.public_api.views import RegisterView, LoginView, VerifyEmailView, ResendVerificationEmailView, MeView, ProfileCompleteView, TokenRefreshView
-from sites.public_api.syscode_views import SysCodeByParentView
+from sites.public_api.syscode_views import SysCodeByParentView, SysCodeBulkByParentsView
 from sites.public_api.google_oauth import GoogleRedirectView, GoogleCallbackView
 from sites.public_api.naver_oauth import NaverRedirectView, NaverCallbackView
 from sites.public_api.library_useractivity_views import (
@@ -68,6 +68,8 @@ urlpatterns = [
     # 시스템 코드 읽기 전용 (홈페이지 회원가입/프로필 등용, 관리자 API와 동일 경로로 호환)
     path('systemmanage/syscode/by_parent/', SysCodeByParentView.as_view(), name='public_api_syscode_by_parent'),
     path('systemmanage/syscode/by_parent', SysCodeByParentView.as_view(), name='public_api_syscode_by_parent_no_slash'),
+    path('systemmanage/syscode/bulk/', SysCodeBulkByParentsView.as_view(), name='public_api_syscode_bulk'),
+    path('systemmanage/syscode/bulk', SysCodeBulkByParentsView.as_view(), name='public_api_syscode_bulk_no_slash'),
     # 공지/FAQ/1:1 문의 게시판
     path('api/notices/', include('apps.notice.urls')),
     path('api/faqs/', include('apps.faq.urls')),
