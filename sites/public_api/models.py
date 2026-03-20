@@ -127,8 +127,7 @@ class PublicMemberShip(models.Model):
 class PublicUserActivityLog(models.Model):
     """
     라이브러리 사용자 활동 로그 (테이블: publicUserActivityLog)
-    - 조회(VIEW), 별점(RATING), 북마크(BOOKMARK) 기록
-    - userPublicActiviteLog.md 참조
+    - userPublicActiviteLog.md: VIEW는 로그인 무관(user_id=0), regDate·viewCount, UNIQUE uniq_view, INSERT ON DUPLICATE KEY UPDATE
     """
     CONTENT_TYPE_CHOICES = [
         ('ARTICLE', '아티클'),
@@ -144,15 +143,11 @@ class PublicUserActivityLog(models.Model):
     public_user_activity_log_id = models.BigAutoField(primary_key=True, db_column='publicUserActivityLogId', verbose_name='사용자 활동 로그 PK')
     content_type = models.CharField(max_length=20, choices=CONTENT_TYPE_CHOICES, db_column='contentType', verbose_name='콘텐츠 타입')
     content_code = models.CharField(max_length=50, db_column='contentCode', verbose_name='콘텐츠 고유 코드')
-    user = models.ForeignKey(
-        PublicMemberShip,
-        on_delete=models.CASCADE,
-        related_name='activity_logs',
-        db_column='userId',
-        verbose_name='회원 ID',
-    )
+    user_id = models.BigIntegerField(default=0, db_column='userId', verbose_name='회원 ID (0=비로그인)')
     activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPE_CHOICES, db_column='activityType', verbose_name='사용자 행동 유형')
     rating_value = models.SmallIntegerField(null=True, blank=True, db_column='ratingValue', verbose_name='별점 값 (1~5)')
+    view_count = models.IntegerField(default=1, db_column='viewCount', verbose_name='조회 진입 횟수')
+    reg_date = models.DateField(db_column='regDate', verbose_name='로그 날짜(년-월-일)')
     ip_address = models.CharField(max_length=45, null=True, blank=True, db_column='ipAddress', verbose_name='접속 IP')
     user_agent = models.CharField(max_length=500, null=True, blank=True, db_column='userAgent', verbose_name='브라우저 정보')
     reg_date_time = models.DateTimeField(auto_now=True, db_column='regDateTime', verbose_name='기록 시간')
@@ -164,15 +159,14 @@ class PublicUserActivityLog(models.Model):
         ordering = ['-reg_date_time']
         indexes = [
             models.Index(fields=['content_type', 'content_code'], name='idx_content'),
-            models.Index(fields=['user'], name='idx_user'),
+            models.Index(fields=['user_id'], name='idx_user'),
             models.Index(fields=['activity_type'], name='idx_activity'),
-            models.Index(fields=['content_type', 'content_code', 'activity_type'], name='idx_content_activity'),
-            models.Index(fields=['reg_date_time'], name='idx_regDateTime'),
+            models.Index(fields=['reg_date'], name='idx_regDate'),
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=['user', 'content_type', 'content_code', 'activity_type'],
-                name='uq_user_content_activity',
+                fields=['content_type', 'content_code', 'activity_type', 'user_id', 'reg_date'],
+                name='uniq_view',
             ),
         ]
 

@@ -70,6 +70,7 @@ def get_urlpatterns():
         path('content/questions/', include('apps.content_question.admin_urls')),
         # 게시판 관리 API (공지/FAQ/1:1문의)
         path('board/', include('sites.admin_api.board.urls')),
+        path('display-events/', include('apps.display_event.urls_admin')),
         # 공개 회원(PublicMemberShip) 관리 API
         path('publicMembers/', include('sites.admin_api.public_members.urls')),
     ]

@@ -5,6 +5,7 @@ class Notice(models.Model):
     title = models.CharField(max_length=255)
     content = models.TextField()
     is_pinned = models.BooleanField(default=False)
+    show_in_gnb = models.BooleanField(default=False, verbose_name="GNB 상단에 표시")
     view_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 

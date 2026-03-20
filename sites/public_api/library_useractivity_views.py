@@ -5,7 +5,8 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from django.db.models import Count, Avg
+from django.db import connection
+from django.db.models import Count, Avg, Sum
 from django.utils import timezone
 
 from core.utils import create_success_response, create_error_response
@@ -54,16 +55,12 @@ ACTIVITY_BOOKMARK = 'BOOKMARK'
 
 
 class LibraryUserActivityView(APIView):
-    """POST /api/library/useractivity/view - 콘텐츠 조회 기록"""
+    """POST /api/library/useractivity/view - 콘텐츠 조회 기록 (로그인 무관, userId=0 비로그인, INSERT ON DUPLICATE KEY UPDATE)"""
     permission_classes = []
 
     def post(self, request):
         member = _get_member(request)
-        if not member:
-            return Response(
-                create_error_response('인증이 필요합니다.', '01'),
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+        user_id = member.pk if member else 0
         data = request.data or {}
         content_type = (data.get('contentType') or '').strip().upper()
         content_code = (data.get('contentCode') or '').strip()
@@ -74,14 +71,22 @@ class LibraryUserActivityView(APIView):
             )
         ip = _get_client_ip(request)
         ua = (request.META.get('HTTP_USER_AGENT') or '')[:500]
-        now = timezone.now()
-        log, created = PublicUserActivityLog.objects.update_or_create(
-            user=member,
-            content_type=content_type,
-            content_code=content_code,
-            activity_type=ACTIVITY_VIEW,
-            defaults={'ip_address': ip, 'user_agent': ua, 'reg_date_time': now},
-        )
+        today = timezone.now().date()
+        # INSERT ... ON DUPLICATE KEY UPDATE (uniq_view)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO publicUserActivityLog
+                    (contentType, contentCode, userId, activityType, viewCount, regDate, ipAddress, userAgent, regDateTime)
+                VALUES (%s, %s, %s, %s, 1, %s, %s, %s, NOW())
+                ON DUPLICATE KEY UPDATE
+                    viewCount = viewCount + 1,
+                    regDateTime = NOW(),
+                    ipAddress = VALUES(ipAddress),
+                    userAgent = VALUES(userAgent)
+                """,
+                [content_type, content_code, user_id, ACTIVITY_VIEW, today, ip, ua],
+            )
         return Response(
             create_success_response({'result': 'ok'}),
             status=status.HTTP_200_OK,
@@ -117,18 +122,20 @@ class LibraryUserActivityRating(APIView):
                 create_error_response('rating은 1~5 사이 정수여야 합니다.'),
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        now = timezone.now()
         PublicUserActivityLog.objects.filter(
-            user=member,
+            user_id=member.pk,
             content_type=content_type,
             content_code=content_code,
             activity_type=ACTIVITY_RATING,
         ).delete()
         PublicUserActivityLog.objects.create(
-            user=member,
+            user_id=member.pk,
             content_type=content_type,
             content_code=content_code,
             activity_type=ACTIVITY_RATING,
             rating_value=rating,
+            reg_date=now.date(),
         )
         return Response(
             create_success_response({'result': 'ok'}),
@@ -155,11 +162,13 @@ class LibraryUserActivityBookmark(APIView):
                 create_error_response('contentType, contentCode가 필요합니다.'),
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        today = timezone.now().date()
         _, created = PublicUserActivityLog.objects.get_or_create(
-            user=member,
+            user_id=member.pk,
             content_type=content_type,
             content_code=content_code,
             activity_type=ACTIVITY_BOOKMARK,
+            defaults={'reg_date': today},
         )
         return Response(
             create_success_response({'result': 'ok'}),
@@ -182,7 +191,7 @@ class LibraryUserActivityBookmark(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         deleted, _ = PublicUserActivityLog.objects.filter(
-            user=member,
+            user_id=member.pk,
             content_type=content_type,
             content_code=content_code,
             activity_type=ACTIVITY_BOOKMARK,
@@ -205,13 +214,13 @@ class LibraryStatsViewCount(APIView):
                 create_error_response('contentType, contentCode 쿼리가 필요합니다.'),
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        count = PublicUserActivityLog.objects.filter(
+        total = PublicUserActivityLog.objects.filter(
             content_type=content_type,
             content_code=content_code,
             activity_type=ACTIVITY_VIEW,
-        ).count()
+        ).aggregate(s=Sum('view_count'))['s'] or 0
         return Response(
-            create_success_response({'count': count}),
+            create_success_response({'count': int(total)}),
             status=status.HTTP_200_OK,
         )
 
@@ -279,7 +288,7 @@ class LibraryMeViews(APIView):
         page = max(1, int(request.query_params.get('page', 1)))
         page_size = min(max(1, int(request.query_params.get('page_size', request.query_params.get('pageSize', 10)))), 50)
         qs = PublicUserActivityLog.objects.filter(
-            user=member,
+            user_id=member.pk,
             activity_type=ACTIVITY_VIEW,
         ).order_by('-reg_date_time')
         total = qs.count()
@@ -311,7 +320,7 @@ class LibraryMeBookmarks(APIView):
         page = max(1, int(request.query_params.get('page', 1)))
         page_size = min(max(1, int(request.query_params.get('page_size', request.query_params.get('pageSize', 10)))), 50)
         qs = PublicUserActivityLog.objects.filter(
-            user=member,
+            user_id=member.pk,
             activity_type=ACTIVITY_BOOKMARK,
         ).order_by('-reg_date_time')
         total = qs.count()
@@ -344,7 +353,7 @@ class LibraryMeRatings(APIView):
         page_size = min(max(1, int(request.query_params.get('page_size', request.query_params.get('pageSize', 10)))), 50)
         sort = (request.query_params.get('sort') or 'regDateTime_desc').strip()
         qs = PublicUserActivityLog.objects.filter(
-            user=member,
+            user_id=member.pk,
             activity_type=ACTIVITY_RATING,
         )
         if sort == 'rating_desc':
@@ -356,7 +365,7 @@ class LibraryMeRatings(APIView):
         total = qs.count()
         # 요약: 평균, 총 개수, 분포
         summary_qs = PublicUserActivityLog.objects.filter(
-            user=member,
+            user_id=member.pk,
             activity_type=ACTIVITY_RATING,
             rating_value__isnull=False,
         )

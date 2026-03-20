@@ -35,6 +35,14 @@ class NoticeViewSet(viewsets.ModelViewSet):
     ordering_fields = ["created_at", "view_count", "title"]
     ordering = ["-is_pinned", "-created_at"]
 
+    def get_queryset(self):
+        qs = Notice.objects.all()
+        if getattr(self, "action", None) == "list":
+            raw = self.request.query_params.get("show_in_gnb")
+            if raw is not None and str(raw).lower() in ("true", "1", "yes"):
+                qs = qs.filter(show_in_gnb=True)
+        return qs
+
     def get_serializer_class(self):
         action = getattr(self, "action", None)
         if action == "list":

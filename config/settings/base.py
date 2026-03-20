@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "apps.inquiry",
     "apps.content_question",
     "apps.highlight",
+    "apps.display_event",
 ]
 
 MIDDLEWARE = [
