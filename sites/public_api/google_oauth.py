@@ -37,7 +37,7 @@ def _get_client_ip(request):
 def _frontend_callback_url():
     base = (getattr(settings, 'PUBLIC_VERIFY_BASE_URL', '') or '').strip().rstrip('/')
     if not base:
-        base = 'http://localhost:3001'  # 로컬 개발 기본값
+        base = 'http://localhost:3000'  # Next 기본 포트·CSRF 기본과 맞춤
     return f'{base}/auth/callback'
 
 

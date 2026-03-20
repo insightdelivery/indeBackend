@@ -76,6 +76,15 @@
     - 없으면 신규 생성: `email_verified=True`, `profile_completed=False`
   - **리다이렉트**: `{PUBLIC_VERIFY_BASE_URL}/auth/callback?access_token=...&refresh_token=...&expires_in=...&from=signup` (state=signup 일 때 from=signup)
 
+### 3.8 Kakao OAuth
+
+- **GET** `/auth/kakao/redirect/?state=signup` (선택)
+  - **동작**: 카카오 인가 URL로 리다이렉트 (`kauth.kakao.com/oauth/authorize`). **기본은 `scope` 미전송**(동의항목·심사 전). 필요 시 `KAKAO_OAUTH_SCOPE`만 설정.
+  - **env**: `KAKAO_OAUTH_CLIENT_ID`, `KAKAO_OAUTH_CLIENT_SECRET`(콘솔 시크릿 ON 시 필수), 선택 `KAKAO_OAUTH_SCOPE`
+- **GET** `/auth/kakao/callback/`
+  - **동작**: `POST kauth.kakao.com/oauth/token` → `GET kapi.kakao.com/v2/user/me` → PublicMemberShip 조회/생성 (네이버·구글과 동일 분기)
+  - **리다이렉트**: Google과 동일 형식의 `/auth/callback` 쿼리
+
 ---
 
 ## 4. 메일·인증 (별도 모듈)
@@ -96,9 +105,12 @@
 | 변수 | 설명 |
 |------|------|
 | `JWT_SECRET_KEY` | JWT 서명 (기본 SECRET_KEY) |
-| `PUBLIC_VERIFY_BASE_URL` | 인증 메일 링크의 프론트 베이스 (예: http://localhost:3001) |
+| `PUBLIC_VERIFY_BASE_URL` | 인증 메일·OAuth 콜백 프론트 베이스 (미설정 시 코드 기본 `http://localhost:3000`) |
 | `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth 클라이언트 ID |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth 클라이언트 시크릿 |
+| `KAKAO_OAUTH_CLIENT_ID` | 카카오 REST API 키 (`client_id`) |
+| `KAKAO_OAUTH_CLIENT_SECRET` | 카카오 클라이언트 시크릿(활성화 시 토큰 요청에 필수) |
+| `KAKAO_OAUTH_SCOPE` | (선택) 인가 시 `scope` 쉼표 구분. 미설정·빈 값이면 scope 파라미터 없음 |
 | `GMAIL_SENDER` | 인증 메일 발신 주소 |
 | `GMAIL_APP_PASSWORD` | Gmail 앱 비밀번호 (또는 GOOGLE_API_KEY에 앱 비밀번호) |
 
@@ -110,6 +122,7 @@
 - `auth/register/`, `auth/login/`
 - `auth/verify-email/`, `auth/resend-verification-email/`
 - `auth/google/redirect/`, `auth/google/callback/`
+- `auth/kakao/redirect/`, `auth/kakao/callback/`
 - `me/` (GET, PATCH)
 - `profile/complete/` (PUT)
 - `systemmanage/syscode/by_parent/`

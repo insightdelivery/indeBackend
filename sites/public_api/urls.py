@@ -9,6 +9,7 @@ from sites.public_api.views import RegisterView, LoginView, VerifyEmailView, Res
 from sites.public_api.syscode_views import SysCodeByParentView, SysCodeBulkByParentsView
 from sites.public_api.google_oauth import GoogleRedirectView, GoogleCallbackView
 from sites.public_api.naver_oauth import NaverRedirectView, NaverCallbackView
+from sites.public_api.kakao_oauth import KakaoRedirectView, KakaoCallbackView
 from sites.public_api.library_useractivity_views import (
     LibraryUserActivityView,
     LibraryUserActivityRating,
@@ -61,6 +62,10 @@ urlpatterns = [
     path('auth/naver/redirect', NaverRedirectView.as_view(), name='public_api_naver_redirect_no_slash'),
     path('auth/naver/callback/', NaverCallbackView.as_view(), name='public_api_naver_callback'),
     path('auth/naver/callback', NaverCallbackView.as_view(), name='public_api_naver_callback_no_slash'),
+    path('auth/kakao/redirect/', KakaoRedirectView.as_view(), name='public_api_kakao_redirect'),
+    path('auth/kakao/redirect', KakaoRedirectView.as_view(), name='public_api_kakao_redirect_no_slash'),
+    path('auth/kakao/callback/', KakaoCallbackView.as_view(), name='public_api_kakao_callback'),
+    path('auth/kakao/callback', KakaoCallbackView.as_view(), name='public_api_kakao_callback_no_slash'),
     path('me/', MeView.as_view(), name='public_api_me'),
     path('me', MeView.as_view(), name='public_api_me_no_slash'),
     path('profile/complete/', ProfileCompleteView.as_view(), name='public_api_profile_complete'),

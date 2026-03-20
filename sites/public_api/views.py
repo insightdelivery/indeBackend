@@ -1,6 +1,10 @@
 """
 공개 API 뷰 (PublicMemberShip 기반 일반 회원가입/로그인)
 """
+import logging
+
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -10,6 +14,9 @@ from sites.public_api.models import PublicMemberShip
 from sites.public_api.serializers import RegisterSerializer, LoginSerializer
 from sites.public_api.utils import create_public_jwt_tokens, get_token_from_request, verify_jwt_token
 from sites.public_api import email_verification
+from sites.public_api.kakao_oauth import PLACEHOLDER_EMAIL_DOMAIN
+
+logger = logging.getLogger(__name__)
 
 
 def _user_response(member):
@@ -28,6 +35,7 @@ def _user_response(member):
         'region_domestic': member.region_domestic or None,
         'region_foreign': member.region_foreign or None,
         'profile_completed': member.profile_completed,
+        'email_verified': member.email_verified,
         'joined_via': member.joined_via,
         'is_staff': getattr(member, 'is_staff', False),
         'created_at': member.created_at.isoformat() if member.created_at else None,
@@ -40,6 +48,57 @@ def _get_client_ip(request):
     if x_forwarded_for:
         return x_forwarded_for.split(',')[0]
     return request.META.get('REMOTE_ADDR', '')
+
+
+def _apply_kakao_unverified_email(member, data):
+    """
+    카카오 가입 + 이메일 미인증: 부가정보 단계에서 실제 이메일 등록.
+    Returns (error Response or None, send_verification_after_save: bool).
+    Mutates member.email / email_verified when applicable.
+    """
+    if member.joined_via != 'KAKAO' or member.email_verified:
+        return None, False
+
+    raw = (data.get('email') or '').strip()
+    if not raw:
+        return Response(
+            {'error': '이메일을 입력해 주세요.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        ), False
+    try:
+        validate_email(raw)
+    except ValidationError:
+        return Response(
+            {'error': '올바른 이메일 형식이 아닙니다.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        ), False
+    new_email = raw.lower()
+    if new_email.endswith(f'@{PLACEHOLDER_EMAIL_DOMAIN}'):
+        return Response(
+            {'error': '본인 이메일 주소를 입력해 주세요.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        ), False
+
+    old_email = (member.email or '').lower()
+    if PublicMemberShip.objects.filter(email=new_email).exclude(member_sid=member.member_sid).exists():
+        return Response(
+            {'error': '이미 사용 중인 이메일입니다. 다른 이메일을 입력해 주세요.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        ), False
+
+    member.email = new_email
+    member.email_verified = False
+    send_mail = new_email != old_email
+    return None, send_mail
+
+
+def _send_profile_verification_email(member):
+    token = email_verification.create_verification_token(member.email)
+    verify_url = email_verification.get_verification_link(token)
+    sent = email_verification.send_verification_email(member.email, verify_url)
+    if not sent:
+        logger.warning('프로필 완료 후 인증 메일 발송 실패: email=%s', member.email)
+    return sent
 
 
 class RegisterView(APIView):
@@ -190,11 +249,16 @@ class VerifyEmailView(APIView):
                 'error': '유효하지 않거나 만료된 링크입니다. 다시 로그인하여 인증 메일을 재발송해 주세요.',
             }, status=status.HTTP_400_BAD_REQUEST)
         try:
-            member = PublicMemberShip.objects.get(email=email, joined_via='LOCAL', is_active=True)
+            member = PublicMemberShip.objects.get(email=email, is_active=True)
         except PublicMemberShip.DoesNotExist:
             return Response({
                 'error': '해당 회원 정보를 찾을 수 없습니다.',
             }, status=status.HTTP_404_NOT_FOUND)
+        if member.email_verified:
+            return Response({
+                'success': True,
+                'message': '이미 인증이 완료된 이메일입니다.',
+            }, status=status.HTTP_200_OK)
         member.email_verified = True
         member.save(update_fields=['email_verified'])
         return Response({
@@ -214,9 +278,7 @@ class ResendVerificationEmailView(APIView):
                 'error': '이메일을 입력해 주세요.',
             }, status=status.HTTP_400_BAD_REQUEST)
         try:
-            member = PublicMemberShip.objects.get(
-                email=email, joined_via='LOCAL', is_active=True
-            )
+            member = PublicMemberShip.objects.get(email=email, is_active=True)
         except PublicMemberShip.DoesNotExist:
             return Response({
                 'success': True,
@@ -266,6 +328,9 @@ class MeView(APIView):
         if not member:
             return Response({'detail': '인증이 필요합니다.'}, status=status.HTTP_401_UNAUTHORIZED)
         data = request.data
+        err, send_verification = _apply_kakao_unverified_email(member, data)
+        if err:
+            return err
         name = (data.get('name') or '').strip()
         nickname = (data.get('nickname') or '').strip()
         phone = (data.get('phone') or '').strip()
@@ -297,6 +362,8 @@ class MeView(APIView):
             member.region_foreign = None
         member.profile_completed = True
         member.save()
+        if send_verification:
+            _send_profile_verification_email(member)
         return Response(_user_response(member), status=status.HTTP_200_OK)
 
 
@@ -316,6 +383,9 @@ class ProfileCompleteView(APIView):
         except (PublicMemberShip.DoesNotExist, ValueError, TypeError):
             return Response({'detail': '사용자를 찾을 수 없습니다.'}, status=status.HTTP_401_UNAUTHORIZED)
         data = request.data
+        err, send_verification = _apply_kakao_unverified_email(member, data)
+        if err:
+            return err
         name = (data.get('name') or '').strip()
         nickname = (data.get('nickname') or '').strip()
         phone = (data.get('phone') or '').strip()
@@ -347,7 +417,16 @@ class ProfileCompleteView(APIView):
             member.region_foreign = None
         member.profile_completed = True
         member.save()
-        return Response({'message': '프로필이 완료되었습니다.', 'user': _user_response(member)}, status=status.HTTP_200_OK)
+        if send_verification:
+            _send_profile_verification_email(member)
+        msg = '프로필이 완료되었습니다.'
+        if send_verification:
+            msg += ' 입력하신 이메일로 인증 메일을 발송했습니다. 메일함을 확인해 주세요.'
+        extra = {'verification_email_sent': True} if send_verification else {}
+        return Response(
+            {'message': msg, 'user': _user_response(member), **extra},
+            status=status.HTTP_200_OK,
+        )
 
 
 class TokenRefreshView(APIView):
