@@ -13,7 +13,7 @@ ALTER TABLE publicMemberShip ADD COLUMN withdraw_ip VARCHAR(45) NULL COMMENT '�
 ALTER TABLE publicMemberShip ADD COLUMN withdraw_user_agent TEXT NULL COMMENT '탈퇴 요청 User-Agent';
 
 -- 2) status 인덱스 (이미 있으면 에러 시 스킵)
-CREATE INDEX publicMemberShip_status_idx ON publicMemberShip (status);
+CREATE INDEX publicMemberShip_status ON publicMemberShip (status);
 
 -- 3) 마이그레이션 기록 (Django가 적용된 것으로 인식하도록)
 INSERT INTO django_migrations (app, name, applied) VALUES ('public_api', '0007_publicmembership_withdraw_fields', NOW());

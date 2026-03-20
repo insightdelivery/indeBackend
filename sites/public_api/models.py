@@ -87,7 +87,7 @@ class PublicMemberShip(models.Model):
         choices=STATUS_CHOICES,
         default=STATUS_ACTIVE,
         verbose_name='회원 상태',
-        db_index=True,
+        db_index=False,
     )
     withdraw_reason = models.TextField(null=True, blank=True, verbose_name='탈퇴 사유')
     withdraw_detail_reason = models.TextField(null=True, blank=True, verbose_name='탈퇴 상세 사유')
@@ -102,12 +102,13 @@ class PublicMemberShip(models.Model):
         verbose_name_plural = '공개 회원'
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['email']),
-            models.Index(fields=['phone']),
-            models.Index(fields=['joined_via']),
-            models.Index(fields=['is_active']),
-            models.Index(fields=['sns_provider_uid']),
-            models.Index(fields=['status']),
+            models.Index(fields=['email'], name='publicMembe_email_380364_idx'),
+            models.Index(fields=['phone'], name='publicMembe_phone_6d843f_idx'),
+            models.Index(fields=['joined_via'], name='publicMembe_joined__e763a1_idx'),
+            models.Index(fields=['is_active'], name='publicMembe_is_acti_a22f15_idx'),
+            models.Index(fields=['sns_provider_uid'], name='publicMembe_sns_pro_idx'),
+            models.Index(fields=['status'], name='publicMemberShip_status'),
+            models.Index(fields=['status'], name='publicMembe_status_idx'),
         ]
 
     def __str__(self):

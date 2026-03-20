@@ -81,10 +81,10 @@ def main():
         if connection.vendor == "mysql":
             cursor.execute(
                 "SELECT 1 FROM information_schema.STATISTICS "
-                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'publicMemberShip' AND INDEX_NAME = 'publicMemberShip_status_idx'"
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'publicMemberShip' AND INDEX_NAME = 'publicMemberShip_status'"
             )
             if cursor.fetchone() is None:
-                cursor.execute("CREATE INDEX publicMemberShip_status_idx ON publicMemberShip (status)")
+                cursor.execute("CREATE INDEX publicMemberShip_status ON publicMemberShip (status)")
                 print("status 인덱스 생성 완료.")
 
         # django_migrations 기록
