@@ -17,6 +17,7 @@ from sites.admin_api.articles.utils import (
     get_presigned_thumbnail_url,
     convert_s3_urls_to_presigned,
 )
+from sites.admin_api.content_author.s3_utils import profile_image_to_presigned
 from core.utils import create_success_response, create_error_response
 
 
@@ -107,7 +108,7 @@ class PublicArticleDetailView(APIView):
                 deletedAt__isnull=True,
             ).filter(
                 Q(status='SYS26209B021') | Q(status='published'),
-            ).first()
+            ).select_related('author_id').first()
 
             if not article:
                 return Response(
@@ -122,6 +123,10 @@ class PublicArticleDetailView(APIView):
                 data['content'] = convert_s3_urls_to_presigned(data['content'], expires_in=3600)
             if data.get('thumbnail'):
                 data['thumbnail'] = get_presigned_thumbnail_url(data['thumbnail'], expires_in=3600)
+            if data.get('authorProfileImage'):
+                data['authorProfileImage'] = profile_image_to_presigned(
+                    data['authorProfileImage'], expires_in=3600
+                )
 
             return Response(
                 create_success_response(data, '아티클 조회 성공'),

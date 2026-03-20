@@ -30,6 +30,12 @@ class Video(models.Model):
     # 미디어
     videoStreamId = models.CharField(max_length=100, null=True, blank=True, verbose_name='Cloudflare Stream 비디오 ID')
     videoUrl = models.CharField(max_length=1000, null=True, blank=True, verbose_name='영상 URL', help_text='YouTube/Vimeo URL (레거시 지원)')
+    sourceType = models.CharField(
+        max_length=20,
+        default='FILE_UPLOAD',
+        verbose_name='영상 소스 유형',
+        help_text='FILE_UPLOAD: Cloudflare Stream, VIMEO, YOUTUBE',
+    )
     thumbnail = models.CharField(max_length=500, null=True, blank=True, verbose_name='썸네일 URL')
     
     # 인물 정보

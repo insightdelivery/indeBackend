@@ -5,7 +5,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Q
+from django.db.models import Q, F
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from datetime import datetime
 import logging
@@ -30,6 +31,13 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.core.files.uploadedfile import UploadedFile
 
 logger = logging.getLogger(__name__)
+
+
+def _admin_client_ip(request):
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR') or '0'
 
 
 class VideoListView(APIView):
@@ -57,7 +65,7 @@ class VideoListView(APIView):
         - searchType: 검색 타입 (title, speaker, keyword)
         - editor: 작성자 (에디터명)
         - director: 작성자 (디렉터명)
-        - sort: 정렬 (createdAt, viewCount, rating, shareCount)
+        - sort: 정렬 (createdAt, viewCount, rating 만 허용)
         """
         try:
             # 쿼리 파라미터 파싱
@@ -150,10 +158,8 @@ class VideoListView(APIView):
                 queryset = queryset.order_by('-viewCount', '-createdAt')
             elif sort == 'rating':
                 queryset = queryset.order_by('-rating', '-createdAt')
-            elif sort == 'shareCount':
-                # shareCount는 현재 모델에 없으므로 createdAt으로 대체
-                queryset = queryset.order_by('-createdAt')
-            else:  # createdAt (기본값)
+            else:
+                # createdAt (기본값) — shareCount 등 미허용 값은 최신순과 동일 처리
                 queryset = queryset.order_by('-createdAt')
             
             # 페이지네이션
@@ -209,6 +215,16 @@ class VideoDetailView(APIView):
         """
         try:
             video = Video.objects.get(id=id, deletedAt__isnull=True)
+
+            # 상세 조회 시 조회수 증가 (짧은 시간·동일 주체 중복 완화 — videoPlan §6.8)
+            uid = getattr(request.user, 'pk', None) or 'anon'
+            ip = _admin_client_ip(request)
+            view_cache_key = f'admin_video_detail_view:{id}:{uid}:{ip}'
+            if not cache.get(view_cache_key):
+                Video.objects.filter(pk=video.pk).update(viewCount=F('viewCount') + 1)
+                cache.set(view_cache_key, 1, 30)
+            video.refresh_from_db(fields=['viewCount'])
+
             serializer = VideoSerializer(video)
             data = serializer.data.copy()
             
@@ -267,10 +283,7 @@ class VideoDetailView(APIView):
             
             # 기존 Cloudflare Stream 비디오 ID 저장 (삭제용)
             old_video_stream_id = video.videoStreamId
-            
-            # 기존 Cloudflare Stream 비디오 ID 저장 (삭제용)
-            old_video_stream_id = video.videoStreamId
-            
+
             # 기존 썸네일 키 추출
             old_thumbnail = video.thumbnail
             old_thumbnail_key = None
@@ -307,16 +320,16 @@ class VideoDetailView(APIView):
             
             # 시리얼라이저로 저장
             serializer.save()
-            
-            # videoStreamId가 변경된 경우 기존 비디오 삭제
-            if 'videoStreamId' in update_data and update_data.get('videoStreamId') != old_video_stream_id:
-                if old_video_stream_id:
-                    try:
-                        cf_stream = get_cloudflare_stream()
-                        cf_stream.delete_video(old_video_stream_id)
-                        logger.info(f"기존 Cloudflare Stream 비디오 삭제: {old_video_stream_id}")
-                    except Exception as e:
-                        logger.warning(f"기존 Cloudflare Stream 비디오 삭제 실패 (무시): {e}")
+            video.refresh_from_db()
+
+            # Stream ID가 바뀌거나 외부 URL로 전환되어 제거된 경우 기존 Cloudflare 자산 삭제
+            if old_video_stream_id and video.videoStreamId != old_video_stream_id:
+                try:
+                    cf_stream = get_cloudflare_stream()
+                    cf_stream.delete_video(old_video_stream_id)
+                    logger.info(f"기존 Cloudflare Stream 비디오 삭제: {old_video_stream_id}")
+                except Exception as e:
+                    logger.warning(f"기존 Cloudflare Stream 비디오 삭제 실패 (무시): {e}")
             
             # 썸네일을 S3에 업로드 (변경된 경우에만)
             if 'thumbnail' in request.data:

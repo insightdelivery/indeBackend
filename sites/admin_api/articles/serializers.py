@@ -7,7 +7,18 @@ from sites.admin_api.articles.models import Article
 
 class ArticleSerializer(serializers.ModelSerializer):
     """아티클 시리얼라이저 (전체 필드)"""
-    
+
+    authorProfileImage = serializers.SerializerMethodField()
+
+    def get_authorProfileImage(self, obj):
+        """연결된 ContentAuthor.profile_image (없으면 null). 공개 상세에서 presigned 처리."""
+        rel = getattr(obj, 'author_id', None)
+        if rel is None:
+            return None
+        url = getattr(rel, 'profile_image', None) or ''
+        url = url.strip()
+        return url or None
+
     class Meta:
         model = Article
         fields = [
@@ -19,6 +30,7 @@ class ArticleSerializer(serializers.ModelSerializer):
             'category',
             'author',
             'author_id',
+            'authorProfileImage',
             'authorAffiliation',
             'visibility',
             'status',
