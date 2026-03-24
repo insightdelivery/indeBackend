@@ -11,6 +11,7 @@ from sites.admin_api.authentication import AdminJWTAuthentication
 
 from .models import DisplayEvent
 from .serializers import DisplayEventWriteSerializer
+from .s3_utils import presign_event_banner_image_url
 
 
 class AdminDisplayEventPagination(PageNumberPagination):
@@ -48,7 +49,11 @@ class AdminDisplayEventViewSet(viewsets.ModelViewSet):
         from .hero_payload import build_hero_item
 
         content = load_content(instance.content_type_code, instance.content_id)
-        return build_hero_item(instance, content, include_admin_fields=True)
+        data = build_hero_item(instance, content, include_admin_fields=True)
+        iu = data.get("imageUrl")
+        if iu:
+            data["imageUrl"] = presign_event_banner_image_url(iu)
+        return data
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()

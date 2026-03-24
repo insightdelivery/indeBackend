@@ -16,6 +16,13 @@ import uuid
 from datetime import datetime
 from io import BytesIO
 
+# 이벤트 베너 전용 업로드 (folder=event-banner/) — 이미지만, 최대 4MiB
+_EVENT_BANNER_MAX_BYTES = 4 * 1024 * 1024
+_EVENT_BANNER_ALLOWED_CT = frozenset(
+    {"image/jpeg", "image/png", "image/gif", "image/webp", "image/jpg"}
+)
+_EVENT_BANNER_ALLOWED_EXT = frozenset({".jpg", ".jpeg", ".png", ".gif", ".webp"})
+
 
 class FileUploadView(APIView):
     """
@@ -83,6 +90,26 @@ class FileUploadView(APIView):
             # 파일을 BytesIO로 변환
             file_content = uploaded_file.read()
             file_obj = BytesIO(file_content)
+
+            if full_folder.startswith("event-banner/"):
+                if len(file_content) > _EVENT_BANNER_MAX_BYTES:
+                    return Response(
+                        create_error_response(
+                            "이벤트 베너 이미지는 4MB 이하만 업로드할 수 있습니다.",
+                            "01",
+                        ),
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                ct_low = (uploaded_file.content_type or "").split(";")[0].strip().lower()
+                ext_low = os.path.splitext(original_filename)[1].lower()
+                if ct_low not in _EVENT_BANNER_ALLOWED_CT and ext_low not in _EVENT_BANNER_ALLOWED_EXT:
+                    return Response(
+                        create_error_response(
+                            "이벤트 베너는 JPEG, PNG, GIF, WebP 이미지만 업로드할 수 있습니다.",
+                            "01",
+                        ),
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
             
             # Content-Type 설정
             content_type = uploaded_file.content_type or 'application/octet-stream'
@@ -98,16 +125,23 @@ class FileUploadView(APIView):
                     'uploaded_by': str(request.user.id) if hasattr(request.user, 'id') else 'unknown'
                 }
             )
-            
+
+            result_body = {
+                'url': url,
+                'key': s3_key,
+                'filename': filename,
+                'original_filename': original_filename,
+                'size': len(file_content),
+                'content_type': content_type,
+            }
+            # 비공개 버킷: 직링크 url은 브라우저에서 열 수 없음 → 관리자 미리보기용 Presigned
+            if full_folder.startswith('event-banner/'):
+                result_body['displayUrl'] = s3_storage.get_file_url(
+                    s3_key, expires_in=3600, force_presigned=True
+                )
+
             return Response(
-                create_success_response({
-                    'url': url,
-                    'key': s3_key,
-                    'filename': filename,
-                    'original_filename': original_filename,
-                    'size': len(file_content),
-                    'content_type': content_type
-                }, '파일 업로드 성공'),
+                create_success_response(result_body, '파일 업로드 성공'),
                 status=status.HTTP_200_OK
             )
             

@@ -39,6 +39,12 @@ class DisplayEvent(models.Model):
         blank=True,
         db_comment="부제",
     )
+    badge_text = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        db_comment="히어로 상단 배지 칩 문구. NULL/공백이면 노출 안 함",
+    )
     image_url = models.CharField(
         max_length=500,
         null=True,

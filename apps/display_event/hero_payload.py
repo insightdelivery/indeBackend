@@ -21,6 +21,8 @@ def build_hero_item(
     subtitle = (event.subtitle or "").strip() if event.subtitle else None
     if subtitle == "":
         subtitle = None
+    badge_raw = (event.badge_text or "").strip() if event.badge_text else ""
+    badge_text = badge_raw or None
     image_url = (event.image_url or "").strip() if event.image_url else ""
     if not image_url and content:
         image_url = (content.get("thumbnail") or "").strip() or ""
@@ -39,6 +41,7 @@ def build_hero_item(
         "contentId": event.content_id,
         "title": title or None,
         "subtitle": subtitle,
+        "badgeText": badge_text,
         "imageUrl": image_url,
         "linkUrl": out_link,
         "content": content,

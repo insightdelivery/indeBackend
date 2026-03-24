@@ -13,6 +13,13 @@ class DisplayEventWriteSerializer(serializers.ModelSerializer):
     contentId = serializers.IntegerField(source="content_id", required=False, allow_null=True)
     imageUrl = serializers.CharField(source="image_url", required=False, allow_null=True, allow_blank=True)
     linkUrl = serializers.CharField(source="link_url", required=False, allow_null=True, allow_blank=True)
+    badgeText = serializers.CharField(
+        source="badge_text",
+        max_length=100,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+    )
     displayOrder = serializers.IntegerField(source="display_order", required=False, default=0)
     isActive = serializers.BooleanField(source="is_active", required=False, default=True)
     startAt = serializers.DateTimeField(source="start_at", required=False, allow_null=True)
@@ -26,6 +33,7 @@ class DisplayEventWriteSerializer(serializers.ModelSerializer):
             "contentId",
             "title",
             "subtitle",
+            "badgeText",
             "imageUrl",
             "linkUrl",
             "displayOrder",
@@ -74,5 +82,13 @@ class DisplayEventWriteSerializer(serializers.ModelSerializer):
         else:
             attrs["link_url"] = link_norm
             attrs["content_id"] = None
+
+        if "badge_text" in attrs:
+            raw = attrs["badge_text"]
+            if raw is None:
+                attrs["badge_text"] = None
+            else:
+                stripped = (raw or "").strip()
+                attrs["badge_text"] = stripped or None
 
         return attrs

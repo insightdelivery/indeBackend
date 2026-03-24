@@ -13,6 +13,7 @@ from core.utils import create_error_response, create_success_response
 from .content_resolution import load_content
 from .hero_payload import build_hero_item
 from .models import DisplayEvent
+from .s3_utils import presign_event_banner_image_url
 
 
 class PublicDisplayEventListView(APIView):
@@ -41,7 +42,11 @@ class PublicDisplayEventListView(APIView):
         out = []
         for ev in qs:
             content = load_content(ev.content_type_code, ev.content_id)
-            out.append(build_hero_item(ev, content))
+            item = build_hero_item(ev, content)
+            iu = item.get("imageUrl")
+            if iu:
+                item["imageUrl"] = presign_event_banner_image_url(iu)
+            out.append(item)
 
         return Response(
             create_success_response(out, "display events"),

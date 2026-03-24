@@ -82,6 +82,7 @@ urlpatterns = [
     # 공개 아티클 목록 (frontend_www)
     path('api/articles/', include('sites.public_api.article_urls')),
     path('api/videos/', include('sites.public_api.video_urls')),
+    path('api/search/', include('sites.public_api.search_urls')),
     path('api/events/', include('apps.display_event.urls_public')),
     # 아티클 하이라이트 (articleHightlightPlan.md)
     path('api/highlights/', include('apps.highlight.urls')),
