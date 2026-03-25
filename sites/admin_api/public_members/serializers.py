@@ -42,9 +42,24 @@ class PublicMemberCreateUpdateSerializer(serializers.ModelSerializer):
     """생성/수정: password는 write_only, 저장 시 set_password 사용. 관리자용 status/탈퇴 필드 수정 가능."""
     password = serializers.CharField(required=False, write_only=True, allow_blank=True, min_length=8)
     status = serializers.ChoiceField(choices=PublicMemberShip.STATUS_CHOICES, required=False)
-    region_type = serializers.CharField(required=False, allow_blank=True, max_length=50)
-    withdraw_reason = serializers.CharField(required=False, allow_blank=True)
-    withdraw_detail_reason = serializers.CharField(required=False, allow_blank=True)
+    # JSON null·빈 문자열로 필드 비우기 (관리자 폼에서 직분·생년월일·지역 미사용 시)
+    position = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=100
+    )
+    birth_year = serializers.IntegerField(required=False, allow_null=True)
+    birth_month = serializers.IntegerField(required=False, allow_null=True)
+    birth_day = serializers.IntegerField(required=False, allow_null=True)
+    region_type = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=50
+    )
+    region_domestic = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=100
+    )
+    region_foreign = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=100
+    )
+    withdraw_reason = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    withdraw_detail_reason = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = PublicMemberShip
@@ -56,6 +71,21 @@ class PublicMemberCreateUpdateSerializer(serializers.ModelSerializer):
             "email_verified", "is_staff", "is_active",
             "status", "withdraw_reason", "withdraw_detail_reason",
         )
+
+    def validate(self, attrs):
+        """빈 문자열은 DB null과 동일하게 저장."""
+        nullable_chars = (
+            "position",
+            "region_type",
+            "region_domestic",
+            "region_foreign",
+            "withdraw_reason",
+            "withdraw_detail_reason",
+        )
+        for key in nullable_chars:
+            if key in attrs and attrs[key] == "":
+                attrs[key] = None
+        return attrs
 
     def create(self, validated_data):
         password = validated_data.pop("password", None)
