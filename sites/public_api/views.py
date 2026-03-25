@@ -10,7 +10,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from core.models import AuditLog
-from sites.public_api.models import PublicMemberShip
+from sites.public_api.models import PhoneSmsVerification, PublicMemberShip
+from sites.public_api.phone_normalize import is_valid_kr_mobile, normalize_phone_kr, phone_already_registered
 from sites.public_api.serializers import RegisterSerializer, LoginSerializer
 from sites.public_api.utils import create_public_jwt_tokens, get_token_from_request, verify_jwt_token
 from sites.public_api import email_verification
@@ -114,12 +115,28 @@ class RegisterView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
+        phone_norm = normalize_phone_kr(data['phone'])
+        if not is_valid_kr_mobile(phone_norm):
+            return Response(
+                {'error': '올바른 휴대폰 번호를 입력해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not PhoneSmsVerification.objects.filter(phone=phone_norm, verified=True).exists():
+            return Response(
+                {'error': '휴대폰 인증을 완료한 후 회원가입할 수 있습니다.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if phone_already_registered(phone_norm):
+            return Response(
+                {'error': '이미 가입된 휴대폰 번호입니다.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             member = PublicMemberShip(
                 email=data['email'],
                 name=data['name'],
                 nickname=data['nickname'],
-                phone=data['phone'],
+                phone=phone_norm,
                 position=data.get('position') or '',
                 birth_year=data.get('birth_year'),
                 birth_month=data.get('birth_month'),
@@ -135,6 +152,8 @@ class RegisterView(APIView):
             )
             member.set_password(data['password'])
             member.save()
+
+            PhoneSmsVerification.objects.filter(phone=phone_norm).delete()
 
             token = email_verification.create_verification_token(member.email)
             verify_url = email_verification.get_verification_link(token)

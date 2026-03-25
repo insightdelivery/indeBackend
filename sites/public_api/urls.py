@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
 from sites.public_api.views import RegisterView, LoginView, VerifyEmailView, ResendVerificationEmailView, MeView, ProfileCompleteView, TokenRefreshView
+from sites.public_api.sms_views import SendSmsVerificationView, VerifySmsVerificationView
 from sites.public_api.syscode_views import SysCodeByParentView, SysCodeBulkByParentsView
 from sites.public_api.google_oauth import GoogleRedirectView, GoogleCallbackView
 from sites.public_api.naver_oauth import NaverRedirectView, NaverCallbackView
@@ -55,6 +56,10 @@ urlpatterns = [
     path('auth/verify-email', VerifyEmailView.as_view(), name='public_api_verify_email_no_slash'),
     path('auth/resend-verification-email/', ResendVerificationEmailView.as_view(), name='public_api_resend_verification'),
     path('auth/resend-verification-email', ResendVerificationEmailView.as_view(), name='public_api_resend_verification_no_slash'),
+    path('auth/send-sms/', SendSmsVerificationView.as_view(), name='public_api_send_sms'),
+    path('auth/send-sms', SendSmsVerificationView.as_view(), name='public_api_send_sms_no_slash'),
+    path('auth/verify-sms/', VerifySmsVerificationView.as_view(), name='public_api_verify_sms'),
+    path('auth/verify-sms', VerifySmsVerificationView.as_view(), name='public_api_verify_sms_no_slash'),
     path('auth/google/redirect/', GoogleRedirectView.as_view(), name='public_api_google_redirect'),
     path('auth/google/redirect', GoogleRedirectView.as_view(), name='public_api_google_redirect_no_slash'),
     path('auth/google/callback/', GoogleCallbackView.as_view(), name='public_api_google_callback'),

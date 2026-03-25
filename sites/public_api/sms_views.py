@@ -1,0 +1,130 @@
+"""휴대폰 SMS 인증 API (send-sms / verify-sms)."""
+import logging
+import random
+from datetime import timedelta
+
+from django.contrib.auth.hashers import check_password, make_password
+from django.utils import timezone
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework import status
+
+from django.conf import settings
+
+from sites.public_api.aligo_client import send_sms
+from sites.public_api.models import PhoneSmsVerification
+from sites.public_api.phone_normalize import is_valid_kr_mobile, normalize_phone_kr, phone_already_registered
+
+logger = logging.getLogger(__name__)
+
+CODE_TTL_SEC = 3 * 60
+RESEND_COOLDOWN_SEC = 30
+MAX_VERIFY_ATTEMPTS = 5
+
+
+class SendSmsVerificationView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        raw = (request.data.get('phone') or '').strip()
+        norm = normalize_phone_kr(raw)
+        if not is_valid_kr_mobile(norm):
+            return Response(
+                {'error': '올바른 휴대폰 번호를 입력해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if phone_already_registered(norm):
+            return Response(
+                {'error': '이미 가입된 휴대폰 번호입니다.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now = timezone.now()
+        latest = PhoneSmsVerification.objects.filter(phone=norm).order_by('-created_at').first()
+        if latest and (now - latest.last_sent_at).total_seconds() < RESEND_COOLDOWN_SEC:
+            wait = int(RESEND_COOLDOWN_SEC - (now - latest.last_sent_at).total_seconds())
+            return Response(
+                {'error': f'{wait}초 후에 다시 인증번호를 요청할 수 있습니다.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        code = str(random.randint(100000, 999999))
+        code_hash = make_password(code)
+        expires_at = now + timedelta(seconds=CODE_TTL_SEC)
+        row = PhoneSmsVerification.objects.create(
+            phone=norm,
+            code_hash=code_hash,
+            expires_at=expires_at,
+            verified=False,
+            attempt_count=0,
+            last_sent_at=now,
+        )
+
+        service = getattr(settings, 'SMS_SERVICE_NAME', 'INDE')
+        msg = f'[{service}] 인증번호는 {code} 입니다. (3분 이내 입력)'
+        ok, detail = send_sms(norm, msg)
+        if not ok:
+            row.delete()
+            return Response(
+                {'error': detail},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        if getattr(settings, 'SMS_SKIP_SEND', False):
+            logger.warning('SMS_SKIP_SEND: phone=%s code=%s', norm, code)
+
+        return Response(
+            {
+                'success': True,
+                'message': '인증번호를 발송했습니다.',
+                'expires_in': CODE_TTL_SEC,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class VerifySmsVerificationView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        raw_phone = (request.data.get('phone') or '').strip()
+        code = (request.data.get('code') or '').strip()
+        norm = normalize_phone_kr(raw_phone)
+        if not is_valid_kr_mobile(norm) or len(code) != 6 or not code.isdigit():
+            return Response(
+                {'error': '휴대폰 번호와 6자리 인증번호를 입력해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now = timezone.now()
+        row = (
+            PhoneSmsVerification.objects.filter(phone=norm, verified=False, expires_at__gt=now)
+            .order_by('-created_at')
+            .first()
+        )
+        if not row:
+            return Response(
+                {'error': '유효한 인증 요청이 없거나 만료되었습니다. 인증번호를 다시 요청해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if row.attempt_count >= MAX_VERIFY_ATTEMPTS:
+            return Response(
+                {'error': '인증 시도 횟수를 초과했습니다. 인증번호를 다시 요청해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        row.attempt_count += 1
+        if not check_password(code, row.code_hash):
+            row.save(update_fields=['attempt_count'])
+            return Response(
+                {'error': '인증번호가 올바르지 않습니다.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        row.verified = True
+        row.save(update_fields=['verified', 'attempt_count'])
+        return Response(
+            {'success': True, 'message': '휴대폰 인증이 완료되었습니다.'},
+            status=status.HTTP_200_OK,
+        )

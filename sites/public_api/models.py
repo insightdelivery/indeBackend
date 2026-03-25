@@ -335,3 +335,26 @@ class SocialAccount(models.Model):
     def __str__(self):
         return f"{self.user.email} - {self.get_provider_display()}"
 
+
+class PhoneSmsVerification(models.Model):
+    """
+    회원가입 휴대폰 SMS 인증 (Aligo).
+    phoneVerificationAligo.md — 코드는 code_hash로만 저장.
+    """
+    id = models.BigAutoField(primary_key=True)
+    phone = models.CharField(max_length=20, db_index=True, verbose_name='정규화된 휴대폰')
+    code_hash = models.CharField(max_length=128, verbose_name='인증번호 해시')
+    expires_at = models.DateTimeField(db_index=True, verbose_name='만료 시각')
+    verified = models.BooleanField(default=False, verbose_name='인증 완료')
+    attempt_count = models.PositiveSmallIntegerField(default=0, verbose_name='검증 시도 횟수')
+    last_sent_at = models.DateTimeField(verbose_name='마지막 발송 시각')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'phoneSmsVerification'
+        verbose_name = '휴대폰 SMS 인증'
+        verbose_name_plural = '휴대폰 SMS 인증'
+
+    def __str__(self):
+        return f'{self.phone} verified={self.verified}'
+

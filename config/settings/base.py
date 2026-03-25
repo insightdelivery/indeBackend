@@ -241,6 +241,14 @@ JWT_ALGORITHM = "HS256"
 JWT_ACCESS_EXPIRATION_DELTA = 15 * 60  # 15분
 JWT_REFRESH_EXPIRATION_DELTA = 7 * 24 * 60 * 60  # 7일
 
+# Aligo SMS — 휴대폰 인증 (phoneVerificationAligo.md)
+ALIGO_API_KEY = (os.getenv("ALIGO_API_KEY") or "").strip()
+ALIGO_USER_ID = (os.getenv("ALIGO_USER_ID") or "").strip()
+ALIGO_SENDER = (os.getenv("ALIGO_SENDER") or "").strip()
+SMS_SERVICE_NAME = (os.getenv("SMS_SERVICE_NAME") or "INDE").strip()
+# DEBUG이고 SMS_SKIP_SEND=1 일 때만: SMS 미발송, 검증 로직은 동일(로그에 코드 출력)
+SMS_SKIP_SEND = DEBUG and os.getenv("SMS_SKIP_SEND", "").lower() in ("1", "true", "yes")
+
 # 파일 업로드 크기 제한 설정 (2GB)
 # DATA_UPLOAD_MAX_MEMORY_SIZE: 메모리에 로드할 수 있는 최대 데이터 크기
 # FILE_UPLOAD_MAX_MEMORY_SIZE: 메모리에 로드할 수 있는 최대 파일 크기
