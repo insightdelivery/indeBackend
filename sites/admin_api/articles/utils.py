@@ -363,7 +363,8 @@ def convert_s3_urls_to_presigned(html_content: str, expires_in: int = 3600) -> s
         key = S3Storage.extract_key_from_url(url)
         # logger.info(f"추출된 S3 키: {key}")
         
-        if key and key.startswith('article/'):
+        # article 본문 + 홈페이지 정적 문서(회사소개·약관 등) 이미지 키
+        if key and (key.startswith('article/') or key.startswith('homepage-doc/')):
             try:
                 s3_storage = get_s3_storage()
                 # force_presigned=True로 항상 Presigned URL 생성

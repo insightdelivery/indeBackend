@@ -13,12 +13,16 @@ from .constants import HOMEPAGE_DOC_TYPES, HOMEPAGE_DOC_TYPES_ORDERED
 from .models import HomepageDocInfo
 from .serializers import HomepageDocReadSerializer, HomepageDocPutSerializer
 from .utils import replace_base64_images_in_homepage_html
+from sites.admin_api.articles.utils import convert_s3_urls_to_presigned
 
 logger = logging.getLogger(__name__)
 
 
 def _read_payload(instance):
-    return HomepageDocReadSerializer(instance).data
+    data = dict(HomepageDocReadSerializer(instance).data)
+    if data.get('bodyHtml'):
+        data['bodyHtml'] = convert_s3_urls_to_presigned(data['bodyHtml'], expires_in=3600)
+    return data
 
 
 def _ordered_queryset():
