@@ -77,19 +77,29 @@ urlpatterns = [
     path('systemmanage/syscode/bulk/', SysCodeBulkByParentsView.as_view(), name='public_api_syscode_bulk'),
     path('systemmanage/syscode/bulk', SysCodeBulkByParentsView.as_view(), name='public_api_syscode_bulk_no_slash'),
     # 공지/FAQ/1:1 문의 게시판 (후행 슬래시 없이 매칭 — urlNoTrailingSlashPolicy)
+    # include() 부모에 '.../xxx/' 가 있어야 /api/xxx/<하위> 가 자식 urlconf로 넘어감 (Django path 규칙)
+    path('api/notices/', include('apps.notice.urls')),
     path('api/notices', include('apps.notice.urls')),
+    path('api/faqs/', include('apps.faq.urls')),
     path('api/faqs', include('apps.faq.urls')),
+    path('api/inquiries/', include('apps.inquiry.urls')),
     path('api/inquiries', include('apps.inquiry.urls')),
     # 공개 아티클 목록 (frontend_www)
     path('api/homepage-docs/<str:doc_type>', PublicHomepageDocDetailView.as_view(), name='public_homepage_doc_detail'),
     path('api/homepage-docs/<str:doc_type>/', PublicHomepageDocDetailView.as_view(), name='public_homepage_doc_detail_slash'),
+    path('api/articles/', include('sites.public_api.article_urls')),
     path('api/articles', include('sites.public_api.article_urls')),
+    path('api/videos/', include('sites.public_api.video_urls')),
     path('api/videos', include('sites.public_api.video_urls')),
+    path('api/search/', include('sites.public_api.search_urls')),
     path('api/search', include('sites.public_api.search_urls')),
+    path('api/events/', include('apps.display_event.urls_public')),
     path('api/events', include('apps.display_event.urls_public')),
     # 아티클 하이라이트 (articleHightlightPlan.md)
+    path('api/highlights/', include('apps.highlight.urls')),
     path('api/highlights', include('apps.highlight.urls')),
     # 콘텐츠 질문/답변 (공개)
+    path('api/content/', include('apps.content_question.public_urls')),
     path('api/content', include('apps.content_question.public_urls')),
     # 라이브러리 사용자 활동 (userPublicActiviteLog.md)
     path('api/library/useractivity/view', LibraryUserActivityView.as_view()),
