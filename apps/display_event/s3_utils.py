@@ -12,16 +12,32 @@ logger = logging.getLogger(__name__)
 
 def presign_event_banner_image_url(url: Optional[str], expires_in: int = 3600) -> Optional[str]:
     """
-    `event-banner/` 키로 올린 배너 이미지에 대해 Presigned URL 반환.
-    그 외 URL(기존 데이터·콘텐츠 썸네일 등)은 그대로 둔다.
+    DisplayEvent 배너 이미지 URL을 Presigned URL로 변환한다.
+
+    - 최신 업로드는 `event-banner/` 키를 사용하지만, 기존 데이터는 다른 prefix일 수 있다.
+    - 외부 URL까지 무작정 presign하면 잘못된 서명이 될 수 있으므로,
+      **S3(amazonaws) URL로 판단되는 경우에만** presign을 시도한다.
     """
     if not url:
         return None
     if url.startswith("data:image"):
         return url
     key = S3Storage.extract_key_from_url(url)
-    if not key or not key.startswith("event-banner/"):
+    if not key:
         return url
+
+    # S3 URL(virtual host/path style)인 경우만 presign (외부 링크 보호)
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url.split("?", 1)[0])
+        host = (parsed.netloc or "").lower()
+        is_s3 = host.startswith("s3.") or (".s3." in host) or host.endswith("amazonaws.com")
+        if not is_s3:
+            return url
+    except Exception:  # noqa: BLE001
+        return url
+
     try:
         s3_storage = get_s3_storage()
         return s3_storage.get_file_url(key, expires_in=expires_in, force_presigned=True)
