@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views_admin import AdminDisplayEventViewSet
 
-router = DefaultRouter()
+router = DefaultRouter(trailing_slash=False)
 router.register(r"", AdminDisplayEventViewSet, basename="admin-display-events")
 
 urlpatterns = [

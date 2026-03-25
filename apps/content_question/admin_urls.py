@@ -6,5 +6,6 @@ from . import admin_views
 
 urlpatterns = [
     path('', admin_views.AdminContentQuestionListView.as_view(), name='admin_content_question_list'),
-    path('<int:question_id>/', admin_views.AdminContentQuestionDetailView.as_view(), name='admin_content_question_detail'),
+    path('<int:question_id>', admin_views.AdminContentQuestionDetailView.as_view(), name='admin_content_question_detail'),
+    path('<int:question_id>/', admin_views.AdminContentQuestionDetailView.as_view(), name='admin_content_question_detail_slash'),
 ]

@@ -6,5 +6,6 @@ from sites.public_api.article_views import PublicArticleListView, PublicArticleD
 
 urlpatterns = [
     path('', PublicArticleListView.as_view(), name='public_article_list'),
-    path('<int:id>/', PublicArticleDetailView.as_view(), name='public_article_detail'),
+    path('<int:id>', PublicArticleDetailView.as_view(), name='public_article_detail'),
+    path('<int:id>/', PublicArticleDetailView.as_view(), name='public_article_detail_slash'),
 ]

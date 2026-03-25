@@ -23,59 +23,39 @@ class PingView(APIView):
 def get_urlpatterns():
     from sites.admin_api.views import LoginView, RefreshTokenView, LogoutView
     
-    # API v1 URL 패턴
+    # API v1 URL 패턴 (후행 슬래시 없음 — urlNoTrailingSlashPolicy)
     api_v1_patterns = [
-        path('login/', LoginView.as_view(), name='admin_api_login'),
-        path('refresh/', RefreshTokenView.as_view(), name='admin_api_refresh'),
-        path('logout/', LogoutView.as_view(), name='admin_api_logout'),
+        path('login', LoginView.as_view(), name='admin_api_login'),
+        path('refresh', RefreshTokenView.as_view(), name='admin_api_refresh'),
+        path('logout', LogoutView.as_view(), name='admin_api_logout'),
     ]
-    
-    return [
-        path('ping/', PingView.as_view(), name='admin_api_ping'),
-        
-        # 기존 Account 기반 로그인 (하위 호환성)
-        path('login/', LoginView.as_view(), name='admin_api_login_legacy'),
-        path('api/login/', LoginView.as_view(), name='admin_api_login_api'),
-        path('api/login', LoginView.as_view(), name='admin_api_login_api_no_slash'),
-        path('api/v1/', include(api_v1_patterns)),
-        path('refresh/', RefreshTokenView.as_view(), name='admin_api_refresh_legacy'),
-        path('api/refresh/', RefreshTokenView.as_view(), name='admin_api_refresh_api'),
-        path('api/refresh', RefreshTokenView.as_view(), name='admin_api_refresh_api_no_slash'),
-        path('logout/', LogoutView.as_view(), name='admin_api_logout_legacy'),
-        path('api/logout/', LogoutView.as_view(), name='admin_api_logout_api'),
-        path('api/logout', LogoutView.as_view(), name='admin_api_logout_api_no_slash'),
-        
-        # 관리자 회원 API (AdminMemberShip 기반)
-        # 순환 import 방지를 위해 문자열로 전달
-        path('adminMember/', include('api.adminMember.urls')),
-        
-        # 시스템 코드 관리 API
-        path('sysCodeManage/syscode/', include('sites.admin_api.sysCodeManage.urls')),
-        
-        # SystemManage CRUD API (참고 프로젝트 구조)
-        path('systemmanage/', include('sites.admin_api.systemManage.urls')),
-        
-        # 아티클 관리 API
-        path('article/', include('sites.admin_api.articles.urls')),
-        # 콘텐츠 저자 관리 API
-        path('authors/', include('sites.admin_api.content_author.urls')),
-        
-        # 비디오/세미나 관리 API
-        path('video/', include('sites.admin_api.video.urls')),
-        
-        # 파일 관리 API (S3)
-        path('files/', include('sites.admin_api.files.urls')),
-        
-        # 콘텐츠 질문 관리 API (ARTICLE/VIDEO/SEMINAR별 질문 CRUD)
-        path('content/questions/', include('apps.content_question.admin_urls')),
-        # 게시판 관리 API (공지/FAQ/1:1문의)
-        path('board/', include('sites.admin_api.board.urls')),
-        path('display-events/', include('apps.display_event.urls_admin')),
-        # 공개 회원(PublicMemberShip) 관리 API
-        path('publicMembers/', include('sites.admin_api.public_members.urls')),
 
-        # 홈페이지 정적 문서 (회사소개·약관·저작권 등)
-        path('homepage-doc-info/', include('sites.admin_api.homepage_doc.urls')),
+    return [
+        path('ping', PingView.as_view(), name='admin_api_ping'),
+        path('ping/', PingView.as_view(), name='admin_api_ping_slash'),
+
+        # 기존 Account 기반 로그인 (하위 호환성)
+        path('login', LoginView.as_view(), name='admin_api_login_legacy'),
+        path('login/', LoginView.as_view(), name='admin_api_login_legacy_slash'),
+        path('api/login', LoginView.as_view(), name='admin_api_login_api'),
+        path('api/v1', include(api_v1_patterns)),
+        path('refresh', RefreshTokenView.as_view(), name='admin_api_refresh_legacy'),
+        path('api/refresh', RefreshTokenView.as_view(), name='admin_api_refresh_api'),
+        path('logout', LogoutView.as_view(), name='admin_api_logout_legacy'),
+        path('api/logout', LogoutView.as_view(), name='admin_api_logout_api'),
+
+        path('adminMember', include('api.adminMember.urls')),
+        path('sysCodeManage/syscode', include('sites.admin_api.sysCodeManage.urls')),
+        path('systemmanage', include('sites.admin_api.systemManage.urls')),
+        path('article', include('sites.admin_api.articles.urls')),
+        path('authors', include('sites.admin_api.content_author.urls')),
+        path('video', include('sites.admin_api.video.urls')),
+        path('files', include('sites.admin_api.files.urls')),
+        path('content/questions', include('apps.content_question.admin_urls')),
+        path('board', include('sites.admin_api.board.urls')),
+        path('display-events', include('apps.display_event.urls_admin')),
+        path('publicMembers', include('sites.admin_api.public_members.urls')),
+        path('homepage-doc-info', include('sites.admin_api.homepage_doc.urls')),
     ]
 
 # urlpatterns를 함수에서 가져옴
