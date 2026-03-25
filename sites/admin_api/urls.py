@@ -73,6 +73,9 @@ def get_urlpatterns():
         path('display-events/', include('apps.display_event.urls_admin')),
         # 공개 회원(PublicMemberShip) 관리 API
         path('publicMembers/', include('sites.admin_api.public_members.urls')),
+
+        # 홈페이지 정적 문서 (회사소개·약관·저작권 등)
+        path('homepage-doc-info/', include('sites.admin_api.homepage_doc.urls')),
     ]
 
 # urlpatterns를 함수에서 가져옴

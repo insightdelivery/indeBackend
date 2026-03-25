@@ -10,6 +10,7 @@ from sites.public_api.syscode_views import SysCodeByParentView, SysCodeBulkByPar
 from sites.public_api.google_oauth import GoogleRedirectView, GoogleCallbackView
 from sites.public_api.naver_oauth import NaverRedirectView, NaverCallbackView
 from sites.public_api.kakao_oauth import KakaoRedirectView, KakaoCallbackView
+from sites.public_api.homepage_doc_views import PublicHomepageDocDetailView
 from sites.public_api.library_useractivity_views import (
     LibraryUserActivityView,
     LibraryUserActivityRating,
@@ -80,6 +81,7 @@ urlpatterns = [
     path('api/faqs/', include('apps.faq.urls')),
     path('api/inquiries/', include('apps.inquiry.urls')),
     # 공개 아티클 목록 (frontend_www)
+    path('api/homepage-docs/<str:doc_type>/', PublicHomepageDocDetailView.as_view(), name='public_homepage_doc_detail'),
     path('api/articles/', include('sites.public_api.article_urls')),
     path('api/videos/', include('sites.public_api.video_urls')),
     path('api/search/', include('sites.public_api.search_urls')),
