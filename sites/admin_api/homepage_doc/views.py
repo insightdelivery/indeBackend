@@ -13,7 +13,7 @@ from .constants import HOMEPAGE_DOC_TYPES, HOMEPAGE_DOC_TYPES_ORDERED
 from .models import HomepageDocInfo
 from .serializers import HomepageDocReadSerializer, HomepageDocPutSerializer
 from .utils import replace_base64_images_in_homepage_html
-from sites.admin_api.articles.utils import convert_s3_urls_to_presigned
+from sites.admin_api.articles.utils import convert_s3_urls_to_presigned, normalize_empty_p_tags
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,8 @@ class AdminHomepageDocDetailView(APIView):
         else:
             is_published = existing.is_published if existing else True
 
-        body_html = replace_base64_images_in_homepage_html(body_html or '')
+        body_html = normalize_empty_p_tags(body_html or '')
+        body_html = replace_base64_images_in_homepage_html(body_html)
 
         try:
             # INSERT와 UPDATE를 분리한 atomic: IntegrityError 시 첫 블록만 롤됨 (§4.2.1)
