@@ -52,6 +52,7 @@ CONTENT_TYPES = {'ARTICLE', 'VIDEO', 'SEMINAR'}
 ACTIVITY_VIEW = 'VIEW'
 ACTIVITY_RATING = 'RATING'
 ACTIVITY_BOOKMARK = 'BOOKMARK'
+ACTIVITY_SHARE = 'SHARE'
 
 
 class LibraryUserActivityView(APIView):
@@ -86,6 +87,45 @@ class LibraryUserActivityView(APIView):
                     userAgent = VALUES(userAgent)
                 """,
                 [content_type, content_code, user_id, ACTIVITY_VIEW, today, ip, ua],
+            )
+        return Response(
+            create_success_response({'result': 'ok'}),
+            status=status.HTTP_200_OK,
+        )
+
+
+class LibraryUserActivityShare(APIView):
+    """POST /api/library/useractivity/share — 공유 기록 (로그인 무관, VIEW와 동일 uniq_view + viewCount 증가)"""
+
+    permission_classes = []
+
+    def post(self, request):
+        member = _get_member(request)
+        user_id = member.pk if member else 0
+        data = request.data or {}
+        content_type = (data.get('contentType') or '').strip().upper()
+        content_code = (data.get('contentCode') or '').strip()
+        if content_type not in CONTENT_TYPES or not content_code:
+            return Response(
+                create_error_response('contentType, contentCode가 필요합니다.'),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        ip = _get_client_ip(request)
+        ua = (request.META.get('HTTP_USER_AGENT') or '')[:500]
+        today = timezone.now().date()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO publicUserActivityLog
+                    (contentType, contentCode, userId, activityType, viewCount, regDate, ipAddress, userAgent, regDateTime)
+                VALUES (%s, %s, %s, %s, 1, %s, %s, %s, NOW())
+                ON DUPLICATE KEY UPDATE
+                    viewCount = viewCount + 1,
+                    regDateTime = NOW(),
+                    ipAddress = VALUES(ipAddress),
+                    userAgent = VALUES(userAgent)
+                """,
+                [content_type, content_code, user_id, ACTIVITY_SHARE, today, ip, ua],
             )
         return Response(
             create_success_response({'result': 'ok'}),

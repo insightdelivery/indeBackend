@@ -128,7 +128,7 @@ class PublicMemberShip(models.Model):
 class PublicUserActivityLog(models.Model):
     """
     라이브러리 사용자 활동 로그 (테이블: publicUserActivityLog)
-    - userPublicActiviteLog.md: VIEW는 로그인 무관(user_id=0), regDate·viewCount, UNIQUE uniq_view, INSERT ON DUPLICATE KEY UPDATE
+    - userPublicActiviteLog.md: VIEW/SHARE는 로그인 무관(user_id=0), regDate·viewCount, UNIQUE uniq_view, INSERT ON DUPLICATE KEY UPDATE
     """
     CONTENT_TYPE_CHOICES = [
         ('ARTICLE', '아티클'),
@@ -139,6 +139,7 @@ class PublicUserActivityLog(models.Model):
         ('VIEW', '조회'),
         ('RATING', '별점'),
         ('BOOKMARK', '북마크'),
+        ('SHARE', '공유'),
     ]
 
     public_user_activity_log_id = models.BigAutoField(primary_key=True, db_column='publicUserActivityLogId', verbose_name='사용자 활동 로그 PK')
@@ -173,6 +174,57 @@ class PublicUserActivityLog(models.Model):
 
     def __str__(self):
         return f"{self.user_id} {self.activity_type} {self.content_type}:{self.content_code}"
+
+
+class ContentRankingCache(models.Model):
+    """
+    일별 콘텐츠 랭킹 캐시 (테이블: content_ranking_cache)
+    - schedulerContentPlan.md: HOT/SHARE, 배치 1일 1회 적재, API는 본 테이블만 조회
+    """
+    RANKING_HOT = 'HOT'
+    RANKING_SHARE = 'SHARE'
+    RANKING_TYPE_CHOICES = [
+        (RANKING_HOT, '핫한 아티클'),
+        (RANKING_SHARE, '공유 많은 아티클'),
+    ]
+
+    id = models.BigAutoField(primary_key=True)
+    ranking_type = models.CharField(
+        max_length=30,
+        choices=RANKING_TYPE_CHOICES,
+        db_column='ranking_type',
+        verbose_name='랭킹 유형',
+    )
+    content_type = models.CharField(
+        max_length=20,
+        choices=PublicUserActivityLog.CONTENT_TYPE_CHOICES,
+        db_column='content_type',
+        verbose_name='콘텐츠 타입',
+    )
+    content_code = models.CharField(max_length=50, db_column='content_code', verbose_name='콘텐츠 코드')
+    score = models.FloatField(default=0.0, verbose_name='집계 점수')
+    rank_order = models.IntegerField(verbose_name='표시 순서(1~)')
+    base_date = models.DateField(db_column='base_date', verbose_name='집계 기준일')
+    created_at = models.DateTimeField(auto_now_add=True, db_column='created_at', verbose_name='생성일시')
+    updated_at = models.DateTimeField(auto_now=True, db_column='updated_at', verbose_name='수정일시')
+
+    class Meta:
+        db_table = 'content_ranking_cache'
+        verbose_name = '콘텐츠 랭킹 캐시'
+        verbose_name_plural = '콘텐츠 랭킹 캐시'
+        ordering = ['base_date', 'ranking_type', 'rank_order']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ranking_type', 'content_type', 'content_code', 'base_date'],
+                name='uniq_rank',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['ranking_type', 'content_type', 'base_date', 'rank_order'], name='idx_lookup'),
+        ]
+
+    def __str__(self):
+        return f"{self.ranking_type} {self.content_type}:{self.content_code} @{self.base_date}"
 
 
 def generate_inde_user_id():

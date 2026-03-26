@@ -14,6 +14,7 @@ from sites.public_api.kakao_oauth import KakaoRedirectView, KakaoCallbackView
 from sites.public_api.homepage_doc_views import PublicHomepageDocDetailView
 from sites.public_api.library_useractivity_views import (
     LibraryUserActivityView,
+    LibraryUserActivityShare,
     LibraryUserActivityRating,
     LibraryUserActivityBookmark,
     LibraryStatsViewCount,
@@ -23,6 +24,7 @@ from sites.public_api.library_useractivity_views import (
     LibraryMeBookmarks,
     LibraryMeRatings,
 )
+from sites.public_api.content_ranking_views import LibraryRankingHotView, LibraryRankingShareView
 
 
 class PingView(APIView):
@@ -109,6 +111,8 @@ urlpatterns = [
     # 라이브러리 사용자 활동 (userPublicActiviteLog.md)
     path('api/library/useractivity/view', LibraryUserActivityView.as_view()),
     path('api/library/useractivity/view/', LibraryUserActivityView.as_view()),
+    path('api/library/useractivity/share', LibraryUserActivityShare.as_view()),
+    path('api/library/useractivity/share/', LibraryUserActivityShare.as_view()),
     path('api/library/useractivity/rating', LibraryUserActivityRating.as_view()),
     path('api/library/useractivity/rating/', LibraryUserActivityRating.as_view()),
     path('api/library/useractivity/bookmark', LibraryUserActivityBookmark.as_view()),
@@ -125,6 +129,10 @@ urlpatterns = [
     path('api/library/stats/rating/', LibraryStatsRating.as_view()),
     path('api/library/stats/bookmark', LibraryStatsBookmark.as_view()),
     path('api/library/stats/bookmark/', LibraryStatsBookmark.as_view()),
+    path('api/library/ranking/hot', LibraryRankingHotView.as_view()),
+    path('api/library/ranking/hot/', LibraryRankingHotView.as_view()),
+    path('api/library/ranking/share', LibraryRankingShareView.as_view()),
+    path('api/library/ranking/share/', LibraryRankingShareView.as_view()),
 ]
 
 
