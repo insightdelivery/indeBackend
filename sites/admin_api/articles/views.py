@@ -34,6 +34,19 @@ from core.utils import create_success_response, create_error_response, create_ap
 from core.s3_storage import S3Storage, get_s3_storage
 
 
+def author_affiliation_for_content_author(content_author):
+    """
+    content_author.role → article.authorAffiliation 저장 문자열.
+    DIRECTOR → 디랙터, EDITOR → 에디터. 그 외 역할은 None.
+    """
+    role = getattr(content_author, 'role', None)
+    if role == ContentAuthor.ROLE_DIRECTOR:
+        return '디랙터'
+    if role == ContentAuthor.ROLE_EDITOR:
+        return '에디터'
+    return None
+
+
 class ArticleListView(APIView):
     """
     아티클 목록 조회 API
@@ -221,14 +234,19 @@ class ArticleDetailView(APIView):
             if author_id_raw is not None and author_id_raw != '':
                 try:
                     if hasattr(author_id_raw, 'name'):
-                        update_data['author'] = author_id_raw.name
+                        ca = author_id_raw
+                        update_data['author'] = ca.name
+                        update_data['authorAffiliation'] = author_affiliation_for_content_author(ca)
                     else:
                         pk = int(author_id_raw) if isinstance(author_id_raw, (str, int)) else getattr(author_id_raw, 'author_id', getattr(author_id_raw, 'pk', None))
                         if pk is not None:
                             content_author = ContentAuthor.objects.get(author_id=pk)
                             update_data['author'] = content_author.name
+                            update_data['authorAffiliation'] = author_affiliation_for_content_author(content_author)
                 except (ContentAuthor.DoesNotExist, ValueError, TypeError):
                     pass
+            else:
+                update_data['authorAffiliation'] = None
             
             # 기존 이미지 키 추출 (나중에 삭제하기 위해)
             old_content = article.content
@@ -466,14 +484,19 @@ class ArticleCreateView(APIView):
             if author_id_raw is not None:
                 try:
                     if hasattr(author_id_raw, 'name'):
-                        validated_data['author'] = author_id_raw.name
+                        ca = author_id_raw
+                        validated_data['author'] = ca.name
+                        validated_data['authorAffiliation'] = author_affiliation_for_content_author(ca)
                     else:
                         pk = int(author_id_raw) if isinstance(author_id_raw, (str, int)) else getattr(author_id_raw, 'author_id', getattr(author_id_raw, 'pk', None))
                         if pk is not None:
                             content_author = ContentAuthor.objects.get(author_id=pk)
                             validated_data['author'] = content_author.name
+                            validated_data['authorAffiliation'] = author_affiliation_for_content_author(content_author)
                 except (ContentAuthor.DoesNotExist, ValueError, TypeError):
                     pass
+            else:
+                validated_data['authorAffiliation'] = None
             content = validated_data.get('content', '')
             if content:
                 content = normalize_empty_p_tags(content)

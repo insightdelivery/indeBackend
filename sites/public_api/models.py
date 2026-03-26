@@ -179,13 +179,19 @@ class PublicUserActivityLog(models.Model):
 class ContentRankingCache(models.Model):
     """
     일별 콘텐츠 랭킹 캐시 (테이블: content_ranking_cache)
-    - schedulerContentPlan.md: HOT/SHARE, 배치 1일 1회 적재, API는 본 테이블만 조회
+    - schedulerContentPlan.md: HOT/SHARE/CATEGORY_HOT/RECOMMENDED/WEEKLY_CROSS, 배치 1일 1회 적재, API는 본 테이블만 조회
     """
     RANKING_HOT = 'HOT'
     RANKING_SHARE = 'SHARE'
+    RANKING_CATEGORY_HOT = 'CATEGORY_HOT'
+    RANKING_RECOMMENDED = 'RECOMMENDED'
+    RANKING_WEEKLY_CROSS = 'WEEKLY_CROSS'
     RANKING_TYPE_CHOICES = [
         (RANKING_HOT, '핫한 아티클'),
         (RANKING_SHARE, '공유 많은 아티클'),
+        (RANKING_CATEGORY_HOT, '카테고리별 인기'),
+        (RANKING_RECOMMENDED, '추천 아티클'),
+        (RANKING_WEEKLY_CROSS, '주간 인기(크로스 타입)'),
     ]
 
     id = models.BigAutoField(primary_key=True)
@@ -200,6 +206,13 @@ class ContentRankingCache(models.Model):
         choices=PublicUserActivityLog.CONTENT_TYPE_CHOICES,
         db_column='content_type',
         verbose_name='콘텐츠 타입',
+    )
+    category_code = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        db_column='category_code',
+        verbose_name='카테고리(sysCodeSid), CATEGORY_HOT 전용',
     )
     content_code = models.CharField(max_length=50, db_column='content_code', verbose_name='콘텐츠 코드')
     score = models.FloatField(default=0.0, verbose_name='집계 점수')
@@ -221,6 +234,10 @@ class ContentRankingCache(models.Model):
         ]
         indexes = [
             models.Index(fields=['ranking_type', 'content_type', 'base_date', 'rank_order'], name='idx_lookup'),
+            models.Index(
+                fields=['ranking_type', 'category_code', 'base_date', 'rank_order'],
+                name='idx_cat_hot_lookup',
+            ),
         ]
 
     def __str__(self):
@@ -386,6 +403,43 @@ class SocialAccount(models.Model):
     
     def __str__(self):
         return f"{self.user.email} - {self.get_provider_display()}"
+
+
+class ContentShareLink(models.Model):
+    """
+    회원 short 공유 링크 — content_share_link (contentShareLinkCopy.md §2)
+    """
+    CONTENT_TYPE_CHOICES = [
+        ('ARTICLE', 'ARTICLE'),
+        ('VIDEO', 'VIDEO'),
+        ('SEMINAR', 'SEMINAR'),
+    ]
+
+    id = models.BigAutoField(primary_key=True)
+    content_type = models.CharField(max_length=20, choices=CONTENT_TYPE_CHOICES, db_index=True)
+    content_id = models.BigIntegerField()
+    user_id = models.BigIntegerField(db_column='user_id', db_index=True)
+    short_code = models.CharField(max_length=12)
+    share_token = models.CharField(max_length=64)
+    expired_at = models.DateTimeField(db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'content_share_link'
+        verbose_name = '콘텐츠 공유 링크'
+        verbose_name_plural = '콘텐츠 공유 링크'
+        constraints = [
+            models.UniqueConstraint(fields=['short_code'], name='uniq_short_code'),
+            models.UniqueConstraint(fields=['share_token'], name='uniq_share_token'),
+            models.UniqueConstraint(fields=['user_id', 'content_type', 'content_id'], name='uniq_user_content'),
+        ]
+        indexes = [
+            models.Index(fields=['expired_at'], name='idx_expired_at'),
+        ]
+
+    def __str__(self):
+        return f'{self.short_code} ({self.content_type}:{self.content_id})'
 
 
 class PhoneSmsVerification(models.Model):

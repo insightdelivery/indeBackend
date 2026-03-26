@@ -24,7 +24,18 @@ from sites.public_api.library_useractivity_views import (
     LibraryMeBookmarks,
     LibraryMeRatings,
 )
-from sites.public_api.content_ranking_views import LibraryRankingHotView, LibraryRankingShareView
+from sites.public_api.content_share_views import (
+    LibraryContentShareEnsure,
+    LibraryContentShareResolve,
+    LibraryContentShareVisit,
+    LibraryContentShareForCopy,
+)
+from sites.public_api.content_ranking_views import (
+    LibraryRankingHotView,
+    LibraryRankingRecommendedView,
+    LibraryRankingShareView,
+    LibraryRankingWeeklyCrossView,
+)
 
 
 class PingView(APIView):
@@ -113,6 +124,14 @@ urlpatterns = [
     path('api/library/useractivity/view/', LibraryUserActivityView.as_view()),
     path('api/library/useractivity/share', LibraryUserActivityShare.as_view()),
     path('api/library/useractivity/share/', LibraryUserActivityShare.as_view()),
+    path('api/library/content-share/ensure', LibraryContentShareEnsure.as_view()),
+    path('api/library/content-share/ensure/', LibraryContentShareEnsure.as_view()),
+    path('api/library/content-share/resolve', LibraryContentShareResolve.as_view()),
+    path('api/library/content-share/resolve/', LibraryContentShareResolve.as_view()),
+    path('api/library/content-share/visit', LibraryContentShareVisit.as_view()),
+    path('api/library/content-share/visit/', LibraryContentShareVisit.as_view()),
+    path('api/library/content-share/for-copy', LibraryContentShareForCopy.as_view()),
+    path('api/library/content-share/for-copy/', LibraryContentShareForCopy.as_view()),
     path('api/library/useractivity/rating', LibraryUserActivityRating.as_view()),
     path('api/library/useractivity/rating/', LibraryUserActivityRating.as_view()),
     path('api/library/useractivity/bookmark', LibraryUserActivityBookmark.as_view()),
@@ -133,6 +152,10 @@ urlpatterns = [
     path('api/library/ranking/hot/', LibraryRankingHotView.as_view()),
     path('api/library/ranking/share', LibraryRankingShareView.as_view()),
     path('api/library/ranking/share/', LibraryRankingShareView.as_view()),
+    path('api/library/ranking/recommended', LibraryRankingRecommendedView.as_view()),
+    path('api/library/ranking/recommended/', LibraryRankingRecommendedView.as_view()),
+    path('api/library/ranking/weekly', LibraryRankingWeeklyCrossView.as_view()),
+    path('api/library/ranking/weekly/', LibraryRankingWeeklyCrossView.as_view()),
 ]
 
 

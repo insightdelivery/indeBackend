@@ -77,7 +77,18 @@ class ArticleSerializer(serializers.ModelSerializer):
 
 class ArticleListSerializer(serializers.ModelSerializer):
     """아티클 목록 시리얼라이저 (간소화된 필드)"""
-    
+
+    authorProfileImage = serializers.SerializerMethodField()
+
+    def get_authorProfileImage(self, obj):
+        """연결 ContentAuthor.profile_image (없으면 null). 공개 목록에서 presigned 처리는 뷰에서."""
+        rel = getattr(obj, 'author_id', None)
+        if rel is None:
+            return None
+        url = getattr(rel, 'profile_image', None) or ''
+        url = url.strip()
+        return url or None
+
     class Meta:
         model = Article
         fields = [
@@ -88,6 +99,7 @@ class ArticleListSerializer(serializers.ModelSerializer):
             'category',
             'author',
             'author_id',
+            'authorProfileImage',
             'authorAffiliation',
             'visibility',
             'status',
@@ -109,7 +121,7 @@ class ArticleListSerializer(serializers.ModelSerializer):
 
 
 class ArticleCreateSerializer(serializers.ModelSerializer):
-    """아티클 생성 시리얼라이저. author_id 선택 시 author는 ContentAuthor.name으로 자동 설정됨."""
+    """아티클 생성 시리얼라이저. author_id 선택 시 author는 ContentAuthor.name, authorAffiliation은 role(DIRECTOR/EDITOR)에 따라 뷰에서 자동 설정."""
     # 썸네일: 이미지 업로드(base64)만 허용. 글자 수 검증 없음(모델 max_length 상속 안 함)
     thumbnail = serializers.CharField(required=False, allow_blank=True)
 
@@ -166,7 +178,7 @@ class ArticleCreateSerializer(serializers.ModelSerializer):
 
 
 class ArticleUpdateSerializer(serializers.ModelSerializer):
-    """아티클 수정 시리얼라이저. author_id 선택 시 author는 ContentAuthor.name으로 자동 설정됨."""
+    """아티클 수정 시리얼라이저. author_id 선택 시 author는 ContentAuthor.name, authorAffiliation은 role에 따라 뷰에서 자동 설정."""
     # 썸네일: 이미지 업로드(base64)만 허용. 글자 수 검증 없음
     thumbnail = serializers.CharField(required=False, allow_blank=True)
 
