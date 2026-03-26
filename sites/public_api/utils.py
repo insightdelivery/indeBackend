@@ -2,6 +2,7 @@
 Public API 유틸리티 함수
 JWT 토큰 생성/검증 (PublicMemberShip 기반)
 """
+import secrets
 import jwt
 from datetime import datetime, timedelta
 from django.conf import settings
@@ -93,4 +94,50 @@ def create_public_jwt_tokens(user):
         'refresh_token': refresh_token,
         'expires_in': settings.JWT_ACCESS_EXPIRATION_DELTA,
     }
+
+
+def create_oauth_pending_token(provider: str, provider_id: str, email: str, name: str, nickname: str):
+    """
+    SNS 최초 가입 전 — User 생성 없이 휴대폰 단계로만 넘기기 위한 짧은 수명 JWT.
+    token_type=oauth_pending (로그인 access와 구분).
+    """
+    now = datetime.utcnow()
+    exp = now + timedelta(minutes=10)
+    payload = {
+        'token_type': 'oauth_pending',
+        'site': 'public_api',
+        'provider': provider,
+        'provider_id': str(provider_id),
+        'email': (email or '')[:320],
+        'name': (name or '')[:100],
+        'nickname': (nickname or '')[:100],
+        'nonce': secrets.token_hex(16),
+        'exp': exp,
+        'iat': now,
+    }
+    token = jwt.encode(
+        payload,
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+    if isinstance(token, bytes):
+        token = token.decode('utf-8')
+    return token
+
+
+def verify_oauth_pending_token(token):
+    """검증 성공 시 payload dict, 실패 시 None."""
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[getattr(settings, 'JWT_ALGORITHM', 'HS256')],
+        )
+        if payload.get('token_type') != 'oauth_pending' or payload.get('site') != 'public_api':
+            return None
+        return payload
+    except Exception:
+        return None
 

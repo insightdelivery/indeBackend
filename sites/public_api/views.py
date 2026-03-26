@@ -13,7 +13,7 @@ from core.models import AuditLog
 from sites.public_api.models import PhoneSmsVerification, PublicMemberShip
 from sites.public_api.phone_normalize import is_valid_kr_mobile, normalize_phone_kr, phone_already_registered
 from sites.public_api.serializers import RegisterSerializer, LoginSerializer
-from sites.public_api.utils import create_public_jwt_tokens, get_token_from_request, verify_jwt_token
+from sites.public_api.utils import create_public_jwt_tokens, get_token_from_request, verify_jwt_token, verify_oauth_pending_token
 from sites.public_api import email_verification
 from sites.public_api.kakao_oauth import PLACEHOLDER_EMAIL_DOMAIN
 
@@ -243,6 +243,100 @@ class LoginView(APIView):
             'expires_in': tokens['expires_in'],
             'user': _user_response(member),
         }, status=status.HTTP_200_OK)
+
+
+class OAuthCompleteSignupView(APIView):
+    """SNS 최초 가입: temp_token(oauth_pending JWT) + 휴대폰 SMS 인증 완료 후 회원 생성 및 JWT (userJoinPlan)."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        temp_token = (request.data.get('temp_token') or request.data.get('tempToken') or '').strip()
+        phone_raw = (request.data.get('phone') or '').strip()
+        payload = verify_oauth_pending_token(temp_token)
+        if not payload:
+            return Response(
+                {'error': '유효하지 않거나 만료된 가입 세션입니다. 다시 소셜 로그인을 시도해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        phone_norm = normalize_phone_kr(phone_raw)
+        if not is_valid_kr_mobile(phone_norm):
+            return Response(
+                {'error': '올바른 휴대폰 번호를 입력해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not PhoneSmsVerification.objects.filter(phone=phone_norm, verified=True).exists():
+            return Response(
+                {'error': '휴대폰 인증을 완료한 후 진행해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if phone_already_registered(phone_norm):
+            return Response(
+                {'error': '이미 가입된 휴대폰 번호입니다.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        provider = (payload.get('provider') or '').upper()
+        if provider not in ('GOOGLE', 'NAVER', 'KAKAO'):
+            return Response({'error': '지원하지 않는 가입 경로입니다.'}, status=status.HTTP_400_BAD_REQUEST)
+        pid = (payload.get('provider_id') or '').strip()
+        if not pid:
+            return Response({'error': '유효하지 않은 가입 세션입니다.'}, status=status.HTTP_400_BAD_REQUEST)
+        if PublicMemberShip.objects.filter(joined_via=provider, sns_provider_uid=pid).exists():
+            return Response({'error': '이미 가입된 소셜 계정입니다.'}, status=status.HTTP_400_BAD_REQUEST)
+        email = (payload.get('email') or '').strip()
+        if not email:
+            return Response(
+                {'error': '이메일 정보가 없습니다. 다시 소셜 로그인을 시도해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if PublicMemberShip.objects.filter(email__iexact=email).exists():
+            return Response({'error': '이미 사용 중인 이메일입니다.'}, status=status.HTTP_400_BAD_REQUEST)
+        name = (payload.get('name') or 'User').strip()[:100]
+        nickname = (payload.get('nickname') or name).strip()[:100]
+        email_verified = True
+        if provider == 'KAKAO' and email.lower().endswith(f'@{PLACEHOLDER_EMAIL_DOMAIN}'):
+            email_verified = False
+        try:
+            member = PublicMemberShip(
+                email=email,
+                name=name,
+                nickname=nickname,
+                phone=phone_norm,
+                joined_via=provider,
+                sns_provider_uid=pid,
+                password=None,
+                email_verified=email_verified,
+                profile_completed=True,
+                is_active=True,
+            )
+            member.save()
+        except Exception as e:
+            logger.exception('OAuthCompleteSignupView: save failed: %s', e)
+            return Response(
+                {'error': '회원 가입 처리 중 오류가 발생했습니다.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        PhoneSmsVerification.objects.filter(phone=phone_norm).delete()
+        tokens = create_public_jwt_tokens(member)
+        AuditLog.objects.create(
+            user_id=member.member_sid,
+            site_slug='public_api',
+            action='create',
+            resource='publicMemberShip',
+            resource_id=member.member_sid,
+            ip_address=_get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            details={'status': 'success', 'action': 'oauth_phone_complete', 'provider': provider.lower()},
+        )
+        return Response(
+            {
+                'access_token': tokens['access_token'],
+                'refresh_token': tokens['refresh_token'],
+                'expires_in': tokens['expires_in'],
+                'user': _user_response(member),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class VerifyEmailView(APIView):

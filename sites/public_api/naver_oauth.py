@@ -18,7 +18,7 @@ import requests
 
 from core.models import AuditLog
 from sites.public_api.models import PublicMemberShip
-from sites.public_api.utils import create_public_jwt_tokens
+from sites.public_api.utils import create_public_jwt_tokens, create_oauth_pending_token
 
 logger = logging.getLogger(__name__)
 
@@ -186,29 +186,11 @@ class NaverCallbackView(View):
                 by_email.save(update_fields=['sns_provider_uid'])
                 member = by_email
             else:
-                member = PublicMemberShip(
-                    email=email,
-                    name=name,
-                    nickname=nickname,
-                    phone=phone,
-                    joined_via='NAVER',
-                    sns_provider_uid=naver_id,
-                    password=None,
-                    email_verified=True,
-                    profile_completed=False,
-                    is_active=True,
+                pending = create_oauth_pending_token(
+                    'NAVER', str(naver_id), email, name, nickname
                 )
-                member.save()
-                AuditLog.objects.create(
-                    user_id=str(member.member_sid),
-                    site_slug='public_api',
-                    action='create',
-                    resource='publicMemberShip',
-                    resource_id=str(member.member_sid),
-                    ip_address=_get_client_ip(request),
-                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                    details={'status': 'success', 'action': 'register_naver'},
-                )
+                q = urllib.parse.urlencode({'temp_token': pending})
+                return HttpResponseRedirect(f'{frontend_callback}?{q}')
 
         member.last_login = timezone.now()
         member.save(update_fields=['last_login'])

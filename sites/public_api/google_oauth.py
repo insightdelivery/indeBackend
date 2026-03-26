@@ -17,7 +17,7 @@ import requests
 
 from core.models import AuditLog
 from sites.public_api.models import PublicMemberShip
-from sites.public_api.utils import create_public_jwt_tokens
+from sites.public_api.utils import create_public_jwt_tokens, create_oauth_pending_token
 
 logger = logging.getLogger(__name__)
 
@@ -200,30 +200,13 @@ class GoogleCallbackView(View):
                 by_email.save(update_fields=['sns_provider_uid'])
                 member = by_email
             else:
+                # userJoinPlan: OAuth 콜백에서 User 생성 없음 → temp_token → /signup/phone
                 nickname = (user_data.get('given_name') or name or email.split('@')[0])[:100]
-                member = PublicMemberShip(
-                    email=email,
-                    name=name,
-                    nickname=nickname,
-                    phone='',
-                    joined_via='GOOGLE',
-                    sns_provider_uid=google_sub,
-                    password=None,
-                    email_verified=True,
-                    profile_completed=False,
-                    is_active=True,
+                pending = create_oauth_pending_token(
+                    'GOOGLE', str(google_sub), email, name, nickname
                 )
-                member.save()
-                AuditLog.objects.create(
-                    user_id=member.member_sid,
-                    site_slug='public_api',
-                    action='create',
-                    resource='publicMemberShip',
-                    resource_id=member.member_sid,
-                    ip_address=_get_client_ip(request),
-                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                    details={'status': 'success', 'action': 'register_google'},
-                )
+                q = urllib.parse.urlencode({'temp_token': pending})
+                return HttpResponseRedirect(f'{frontend_callback}?{q}')
 
         member.last_login = timezone.now()
         member.save(update_fields=['last_login'])
