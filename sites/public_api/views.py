@@ -121,7 +121,9 @@ class RegisterView(APIView):
                 {'error': '올바른 휴대폰 번호를 입력해 주세요.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if not PhoneSmsVerification.objects.filter(phone=phone_norm, verified=True).exists():
+        if not PhoneSmsVerification.objects.filter(
+            phone=phone_norm, verified=True, purpose=PhoneSmsVerification.PURPOSE_SIGNUP
+        ).exists():
             return Response(
                 {'error': '휴대폰 인증을 완료한 후 회원가입할 수 있습니다.'},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -147,7 +149,7 @@ class RegisterView(APIView):
                 joined_via='LOCAL',
                 newsletter_agree=data.get('newsletter_agree', False),
                 profile_completed=True,
-                email_verified=False,
+                email_verified=True,
                 is_active=True,
             )
             member.set_password(data['password'])
@@ -155,12 +157,7 @@ class RegisterView(APIView):
 
             PhoneSmsVerification.objects.filter(phone=phone_norm).delete()
 
-            token = email_verification.create_verification_token(member.email)
-            verify_url = email_verification.get_verification_link(token)
-            email_sent = email_verification.send_verification_email(member.email, verify_url)
-            if not email_sent:
-                import logging
-                logging.getLogger(__name__).warning('회원가입 인증 메일 발송 실패: email=%s', member.email)
+            tokens = create_public_jwt_tokens(member)
 
             AuditLog.objects.create(
                 user_id=member.member_sid,
@@ -170,14 +167,17 @@ class RegisterView(APIView):
                 resource_id=member.member_sid,
                 ip_address=_get_client_ip(request),
                 user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                details={'status': 'success', 'action': 'register', 'email_sent': email_sent}
+                details={'status': 'success', 'action': 'register'},
             )
-            return Response({
-                'success': True,
-                'message': '회원가입이 완료되었습니다. 이메일 인증 후 로그인할 수 있습니다.',
-                'email': member.email,
-                'user': _user_response(member),
-            }, status=status.HTTP_201_CREATED)
+            return Response(
+                {
+                    'access_token': tokens['access_token'],
+                    'refresh_token': tokens['refresh_token'],
+                    'expires_in': tokens['expires_in'],
+                    'user': _user_response(member),
+                },
+                status=status.HTTP_201_CREATED,
+            )
         except Exception as e:
             return Response({
                 'error': f'회원 가입 처리 중 오류가 발생했습니다: {str(e)}'
@@ -205,11 +205,6 @@ class LoginView(APIView):
             return Response({
                 'error': '이메일 또는 비밀번호가 올바르지 않습니다.'
             }, status=status.HTTP_401_UNAUTHORIZED)
-
-        if not member.email_verified:
-            return Response({
-                'error': '이메일 인증을 완료해 주세요. 가입 시 발송된 메일의 인증 링크를 클릭해 주세요.'
-            }, status=status.HTTP_403_FORBIDDEN)
 
         if not member.check_password(password):
             AuditLog.objects.create(
@@ -265,7 +260,9 @@ class OAuthCompleteSignupView(APIView):
                 {'error': '올바른 휴대폰 번호를 입력해 주세요.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if not PhoneSmsVerification.objects.filter(phone=phone_norm, verified=True).exists():
+        if not PhoneSmsVerification.objects.filter(
+            phone=phone_norm, verified=True, purpose=PhoneSmsVerification.PURPOSE_SIGNUP
+        ).exists():
             return Response(
                 {'error': '휴대폰 인증을 완료한 후 진행해 주세요.'},
                 status=status.HTTP_400_BAD_REQUEST,

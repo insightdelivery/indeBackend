@@ -444,9 +444,17 @@ class ContentShareLink(models.Model):
 
 class PhoneSmsVerification(models.Model):
     """
-    회원가입 휴대폰 SMS 인증 (Aligo).
+    회원가입·아이디 찾기 등 휴대폰 SMS 인증 (Aligo).
     phoneVerificationAligo.md — 코드는 code_hash로만 저장.
+    purpose로 회원가입(send-sms)과 아이디 찾기(send-sms-find-id) 세션을 분리한다.
     """
+    PURPOSE_SIGNUP = 'signup'
+    PURPOSE_FIND_ID = 'find_id'
+    PURPOSE_CHOICES = [
+        (PURPOSE_SIGNUP, '회원가입'),
+        (PURPOSE_FIND_ID, '아이디찾기'),
+    ]
+
     id = models.BigAutoField(primary_key=True)
     phone = models.CharField(max_length=20, db_index=True, verbose_name='정규화된 휴대폰')
     code_hash = models.CharField(max_length=128, verbose_name='인증번호 해시')
@@ -455,6 +463,13 @@ class PhoneSmsVerification(models.Model):
     attempt_count = models.PositiveSmallIntegerField(default=0, verbose_name='검증 시도 횟수')
     last_sent_at = models.DateTimeField(verbose_name='마지막 발송 시각')
     created_at = models.DateTimeField(auto_now_add=True)
+    purpose = models.CharField(
+        max_length=20,
+        choices=PURPOSE_CHOICES,
+        default=PURPOSE_SIGNUP,
+        db_index=True,
+        verbose_name='인증 목적',
+    )
 
     class Meta:
         db_table = 'phoneSmsVerification'

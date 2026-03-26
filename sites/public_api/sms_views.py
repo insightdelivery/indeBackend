@@ -1,4 +1,9 @@
-"""휴대폰 SMS 인증 API (send-sms / verify-sms)."""
+"""
+휴대폰 SMS 인증 API — `POST /auth/send-sms`, `POST /auth/verify-sms`.
+
+- Aligo 발송: `aligo_client.send_sms` (phoneVerificationAligo.md §1, §3).
+- 아이디 찾기는 `verify-sms` 요청 시 `purpose: "find_id"` 로 구분(회원가입 `signup`과 별도 행).
+"""
 import logging
 import random
 from datetime import timedelta
@@ -18,7 +23,7 @@ from sites.public_api.phone_normalize import is_valid_kr_mobile, normalize_phone
 
 logger = logging.getLogger(__name__)
 
-CODE_TTL_SEC = 3 * 60
+CODE_TTL_SEC = 10 * 60
 RESEND_COOLDOWN_SEC = 30
 MAX_VERIFY_ATTEMPTS = 5
 
@@ -41,7 +46,11 @@ class SendSmsVerificationView(APIView):
             )
 
         now = timezone.now()
-        latest = PhoneSmsVerification.objects.filter(phone=norm).order_by('-created_at').first()
+        latest = (
+            PhoneSmsVerification.objects.filter(phone=norm, purpose=PhoneSmsVerification.PURPOSE_SIGNUP)
+            .order_by('-created_at')
+            .first()
+        )
         if latest and (now - latest.last_sent_at).total_seconds() < RESEND_COOLDOWN_SEC:
             wait = int(RESEND_COOLDOWN_SEC - (now - latest.last_sent_at).total_seconds())
             return Response(
@@ -59,10 +68,11 @@ class SendSmsVerificationView(APIView):
             verified=False,
             attempt_count=0,
             last_sent_at=now,
+            purpose=PhoneSmsVerification.PURPOSE_SIGNUP,
         )
 
         service = getattr(settings, 'SMS_SERVICE_NAME', 'INDE')
-        msg = f'[{service}] 인증번호는 {code} 입니다. (3분 이내 입력)'
+        msg = f'[{service}] 인증번호는 {code} 입니다. (10분 이내 입력)'
         ok, detail = send_sms(norm, msg)
         if not ok:
             row.delete()
@@ -97,9 +107,18 @@ class VerifySmsVerificationView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        purpose = (request.data.get('purpose') or PhoneSmsVerification.PURPOSE_SIGNUP).strip()
+        if purpose not in (PhoneSmsVerification.PURPOSE_SIGNUP, PhoneSmsVerification.PURPOSE_FIND_ID):
+            purpose = PhoneSmsVerification.PURPOSE_SIGNUP
+
         now = timezone.now()
         row = (
-            PhoneSmsVerification.objects.filter(phone=norm, verified=False, expires_at__gt=now)
+            PhoneSmsVerification.objects.filter(
+                phone=norm,
+                verified=False,
+                expires_at__gt=now,
+                purpose=purpose,
+            )
             .order_by('-created_at')
             .first()
         )

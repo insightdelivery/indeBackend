@@ -16,6 +16,13 @@ from sites.public_api.views import (
     TokenRefreshView,
 )
 from sites.public_api.sms_views import SendSmsVerificationView, VerifySmsVerificationView
+from sites.public_api.account_recovery_views import (
+    SendSmsFindIdView,
+    FindIdView,
+    SendPasswordResetCodeView,
+    VerifyPasswordResetCodeView,
+    ResetPasswordView,
+)
 from sites.public_api.syscode_views import SysCodeByParentView, SysCodeBulkByParentsView
 from sites.public_api.google_oauth import GoogleRedirectView, GoogleCallbackView
 from sites.public_api.naver_oauth import NaverRedirectView, NaverCallbackView
@@ -84,6 +91,16 @@ urlpatterns = [
     path('auth/send-sms', SendSmsVerificationView.as_view(), name='public_api_send_sms_no_slash'),
     path('auth/verify-sms/', VerifySmsVerificationView.as_view(), name='public_api_verify_sms'),
     path('auth/verify-sms', VerifySmsVerificationView.as_view(), name='public_api_verify_sms_no_slash'),
+    path('auth/send-sms-find-id/', SendSmsFindIdView.as_view(), name='public_api_send_sms_find_id'),
+    path('auth/send-sms-find-id', SendSmsFindIdView.as_view(), name='public_api_send_sms_find_id_no_slash'),
+    path('auth/find-id/', FindIdView.as_view(), name='public_api_find_id'),
+    path('auth/find-id', FindIdView.as_view(), name='public_api_find_id_no_slash'),
+    path('auth/send-password-reset-code/', SendPasswordResetCodeView.as_view(), name='public_api_send_pw_reset'),
+    path('auth/send-password-reset-code', SendPasswordResetCodeView.as_view(), name='public_api_send_pw_reset_no_slash'),
+    path('auth/verify-password-reset-code/', VerifyPasswordResetCodeView.as_view(), name='public_api_verify_pw_reset'),
+    path('auth/verify-password-reset-code', VerifyPasswordResetCodeView.as_view(), name='public_api_verify_pw_reset_no_slash'),
+    path('auth/reset-password/', ResetPasswordView.as_view(), name='public_api_reset_password'),
+    path('auth/reset-password', ResetPasswordView.as_view(), name='public_api_reset_password_no_slash'),
     path('auth/google/redirect/', GoogleRedirectView.as_view(), name='public_api_google_redirect'),
     path('auth/google/redirect', GoogleRedirectView.as_view(), name='public_api_google_redirect_no_slash'),
     path('auth/google/callback/', GoogleCallbackView.as_view(), name='public_api_google_callback'),
