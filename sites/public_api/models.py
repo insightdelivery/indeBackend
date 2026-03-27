@@ -450,9 +450,11 @@ class PhoneSmsVerification(models.Model):
     """
     PURPOSE_SIGNUP = 'signup'
     PURPOSE_FIND_ID = 'find_id'
+    PURPOSE_PROFILE_PHONE = 'profile_phone'
     PURPOSE_CHOICES = [
         (PURPOSE_SIGNUP, '회원가입'),
         (PURPOSE_FIND_ID, '아이디찾기'),
+        (PURPOSE_PROFILE_PHONE, '회원정보_휴대폰변경'),
     ]
 
     id = models.BigAutoField(primary_key=True)
@@ -462,6 +464,7 @@ class PhoneSmsVerification(models.Model):
     verified = models.BooleanField(default=False, verbose_name='인증 완료')
     attempt_count = models.PositiveSmallIntegerField(default=0, verbose_name='검증 시도 횟수')
     last_sent_at = models.DateTimeField(verbose_name='마지막 발송 시각')
+    verified_at = models.DateTimeField(null=True, blank=True, verbose_name='인증 완료 시각')
     created_at = models.DateTimeField(auto_now_add=True)
     purpose = models.CharField(
         max_length=20,

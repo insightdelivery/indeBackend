@@ -72,3 +72,13 @@ class ContentQuestionAnswerCreateSerializer(serializers.Serializer):
         if not value or not value.strip():
             raise serializers.ValidationError('답변 내용을 입력해주세요.')
         return value.strip()
+
+
+class ContentQuestionAnswerUpdateSerializer(serializers.Serializer):
+    """공개: 질문 답변 수정"""
+    answer_text = serializers.CharField(allow_blank=False)
+
+    def validate_answer_text(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError('답변 내용을 입력해주세요.')
+        return value.strip()

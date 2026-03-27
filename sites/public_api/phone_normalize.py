@@ -37,3 +37,17 @@ def phone_already_registered(normalized: str) -> bool:
         if normalize_phone_kr(m.phone or '') == normalized:
             return True
     return False
+
+
+def phone_registered_to_other_member(normalized: str, exclude_member_sid: int) -> bool:
+    """다른 회원이 사용 중인 정규화 번호인지 (본인 제외). 회원정보 휴대폰 변경 SMS용."""
+    qs = (
+        PublicMemberShip.objects.filter(is_active=True)
+        .exclude(status=PublicMemberShip.STATUS_WITHDRAWN)
+        .exclude(member_sid=exclude_member_sid)
+        .only('phone')
+    )
+    for m in qs:
+        if normalize_phone_kr(m.phone or '') == normalized:
+            return True
+    return False

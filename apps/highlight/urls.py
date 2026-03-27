@@ -3,8 +3,13 @@ Article Highlight API URL (articleHightlightPlan.md §5)
 """
 from django.urls import path
 from .views import HighlightListCreateView, HighlightDeleteView, HighlightGroupDeleteView
+from .mypage_views import MyHighlightsByDateView, MyHighlightsByArticleView
 
 urlpatterns = [
+    path('me/date/', MyHighlightsByDateView.as_view(), name='highlight_me_date'),
+    path('me/date', MyHighlightsByDateView.as_view()),
+    path('me/article/', MyHighlightsByArticleView.as_view(), name='highlight_me_article'),
+    path('me/article', MyHighlightsByArticleView.as_view()),
     path('', HighlightListCreateView.as_view(), name='highlight_list_create'),
     path('group/<int:highlight_group_id>', HighlightGroupDeleteView.as_view(), name='highlight_group_delete'),
     path('group/<int:highlight_group_id>/', HighlightGroupDeleteView.as_view(), name='highlight_group_delete_slash'),

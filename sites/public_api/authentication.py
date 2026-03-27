@@ -51,7 +51,8 @@ class PublicJWTAuthentication(BaseAuthentication):
         
         payload = verify_jwt_token(access_token, token_type='access')
         if not payload:
-            return None
+            # 토큰은 왔으나 만료/위조/형식 오류 — None 반환 시 DRF가 '제공되지 않음'과 동일 처리되어 혼동됨
+            raise AuthenticationFailed('유효하지 않거나 만료된 토큰입니다.')
         
         user_id = payload.get('user_id')
         if not user_id:

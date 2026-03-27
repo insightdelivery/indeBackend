@@ -2,13 +2,16 @@
 공개 API 뷰 (PublicMemberShip 기반 일반 회원가입/로그인)
 """
 import logging
+from datetime import timedelta
 
+from django.contrib.auth.hashers import make_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
+from django.utils import timezone
 from core.models import AuditLog
 from sites.public_api.models import PhoneSmsVerification, PublicMemberShip
 from sites.public_api.phone_normalize import is_valid_kr_mobile, normalize_phone_kr, phone_already_registered
@@ -18,6 +21,55 @@ from sites.public_api import email_verification
 from sites.public_api.kakao_oauth import PLACEHOLDER_EMAIL_DOMAIN
 
 logger = logging.getLogger(__name__)
+
+# 회원정보 휴대폰 변경 SMS 인증 완료 후 저장까지 허용 시간 (wwwMypage_userInfo §5.2)
+PROFILE_PHONE_VERIFY_MAX_AGE_SEC = 15 * 60
+
+
+def _check_profile_phone_verified_for_change(member: PublicMemberShip, new_phone_stripped: str):
+    """
+    저장하려는 번호가 기존과 다르면 profile_phone SMS 인증 필수.
+    통과 시 None, 실패 시 Response.
+    """
+    old_norm = normalize_phone_kr(member.phone or '')
+    new_norm = normalize_phone_kr(new_phone_stripped)
+    if old_norm == new_norm:
+        return None
+    if not is_valid_kr_mobile(new_norm):
+        return Response(
+            {'error': '올바른 휴대폰 번호를 입력해 주세요.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    row = (
+        PhoneSmsVerification.objects.filter(
+            phone=new_norm,
+            purpose=PhoneSmsVerification.PURPOSE_PROFILE_PHONE,
+            verified=True,
+            verified_at__isnull=False,
+        )
+        .order_by('-verified_at')
+        .first()
+    )
+    if not row:
+        return Response(
+            {'error': '변경된 휴대폰 번호는 문자 인증 후 저장할 수 있습니다.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if (timezone.now() - row.verified_at) > timedelta(seconds=PROFILE_PHONE_VERIFY_MAX_AGE_SEC):
+        return Response(
+            {'error': '휴대폰 인증이 만료되었습니다. 인증번호를 다시 요청해 주세요.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return None
+
+
+def _consume_profile_phone_verification(new_norm: str) -> None:
+    if not new_norm:
+        return
+    PhoneSmsVerification.objects.filter(
+        phone=new_norm,
+        purpose=PhoneSmsVerification.PURPOSE_PROFILE_PHONE,
+    ).delete()
 
 
 def _user_response(member):
@@ -449,6 +501,23 @@ class MeView(APIView):
                 {'error': '이름, 닉네임, 휴대폰 번호는 필수입니다.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        phone_err = _check_profile_phone_verified_for_change(member, phone)
+        if phone_err:
+            return phone_err
+        old_phone_norm = normalize_phone_kr(member.phone or '')
+        raw_pw = (data.get('password') or '').strip()
+        if raw_pw:
+            if member.joined_via != 'LOCAL':
+                return Response(
+                    {'error': '소셜 가입 계정은 비밀번호를 변경할 수 없습니다.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if len(raw_pw) < 8:
+                return Response(
+                    {'error': '비밀번호는 8자 이상 입력해 주세요.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            member.password = make_password(raw_pw)
         member.name = name[:100]
         member.nickname = nickname[:100]
         member.phone = phone[:20]
@@ -472,6 +541,9 @@ class MeView(APIView):
             member.region_foreign = None
         member.profile_completed = True
         member.save()
+        new_norm = normalize_phone_kr(phone)
+        if old_phone_norm != new_norm:
+            _consume_profile_phone_verification(new_norm)
         if send_verification:
             _send_profile_verification_email(member)
         return Response(_user_response(member), status=status.HTTP_200_OK)
@@ -504,6 +576,23 @@ class ProfileCompleteView(APIView):
                 {'error': '이름, 닉네임, 휴대폰 번호는 필수입니다.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        phone_err = _check_profile_phone_verified_for_change(member, phone)
+        if phone_err:
+            return phone_err
+        old_phone_norm = normalize_phone_kr(member.phone or '')
+        raw_pw = (data.get('password') or '').strip()
+        if raw_pw:
+            if member.joined_via != 'LOCAL':
+                return Response(
+                    {'error': '소셜 가입 계정은 비밀번호를 변경할 수 없습니다.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if len(raw_pw) < 8:
+                return Response(
+                    {'error': '비밀번호는 8자 이상 입력해 주세요.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            member.password = make_password(raw_pw)
         member.name = name[:100]
         member.nickname = nickname[:100]
         member.phone = phone[:20]
@@ -527,6 +616,9 @@ class ProfileCompleteView(APIView):
             member.region_foreign = None
         member.profile_completed = True
         member.save()
+        new_norm = normalize_phone_kr(phone)
+        if old_phone_norm != new_norm:
+            _consume_profile_phone_verification(new_norm)
         if send_verification:
             _send_profile_verification_email(member)
         msg = '프로필이 완료되었습니다.'

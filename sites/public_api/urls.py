@@ -15,7 +15,11 @@ from sites.public_api.views import (
     ProfileCompleteView,
     TokenRefreshView,
 )
-from sites.public_api.sms_views import SendSmsVerificationView, VerifySmsVerificationView
+from sites.public_api.sms_views import (
+    SendSmsVerificationView,
+    VerifySmsVerificationView,
+    SendProfilePhoneSmsView,
+)
 from sites.public_api.account_recovery_views import (
     SendSmsFindIdView,
     FindIdView,
@@ -91,6 +95,8 @@ urlpatterns = [
     path('auth/send-sms', SendSmsVerificationView.as_view(), name='public_api_send_sms_no_slash'),
     path('auth/verify-sms/', VerifySmsVerificationView.as_view(), name='public_api_verify_sms'),
     path('auth/verify-sms', VerifySmsVerificationView.as_view(), name='public_api_verify_sms_no_slash'),
+    path('auth/send-sms-profile-phone/', SendProfilePhoneSmsView.as_view(), name='public_api_send_sms_profile_phone'),
+    path('auth/send-sms-profile-phone', SendProfilePhoneSmsView.as_view(), name='public_api_send_sms_profile_phone_no_slash'),
     path('auth/send-sms-find-id/', SendSmsFindIdView.as_view(), name='public_api_send_sms_find_id'),
     path('auth/send-sms-find-id', SendSmsFindIdView.as_view(), name='public_api_send_sms_find_id_no_slash'),
     path('auth/find-id/', FindIdView.as_view(), name='public_api_find_id'),

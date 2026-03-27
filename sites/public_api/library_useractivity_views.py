@@ -6,12 +6,18 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import connection
-from django.db.models import Count, Avg, Sum
+from django.db.models import Avg, Count, Max, Sum
 from django.utils import timezone
 
 from core.utils import create_success_response, create_error_response
+from sites.admin_api.articles.models import Article
+from sites.admin_api.articles.utils import get_presigned_thumbnail_url as article_presigned_thumbnail
+from sites.admin_api.video.models import Video
+from sites.admin_api.video.utils import get_presigned_thumbnail_url as video_presigned_thumbnail
 from sites.public_api.models import PublicMemberShip, PublicUserActivityLog
 from sites.public_api.utils import get_token_from_request, verify_jwt_token
+
+DELETED_CONTENT_TITLE = '삭제된 콘텐츠입니다'
 
 
 def _get_member(request):
@@ -46,6 +52,125 @@ def _log_item_to_dict(log):
         'thumbnail': getattr(log, 'thumbnail', None),
         'category': getattr(log, 'category', None),
     }
+
+
+def _presign_article_thumb(url):
+    if not url:
+        return None
+    try:
+        return article_presigned_thumbnail(url, expires_in=3600) or url
+    except Exception:
+        return url
+
+
+def _presign_video_thumb(url):
+    if not url:
+        return None
+    try:
+        return video_presigned_thumbnail(url, expires_in=3600) or url
+    except Exception:
+        return url
+
+
+def _latest_view_log(member, content_type: str, content_code: str):
+    cc = str(content_code).strip()
+    return (
+        PublicUserActivityLog.objects.filter(
+            user_id=member.pk,
+            activity_type=ACTIVITY_VIEW,
+            content_type=content_type,
+            content_code=cc,
+        )
+        .order_by('-reg_date_time', '-public_user_activity_log_id')
+        .first()
+    )
+
+
+def _build_me_views_items(member, page_slice: list) -> list:
+    """
+    page_slice: values() annotate 결과 dict 목록 (content_type, content_code, max_time).
+    IN 쿼리 + dict 매핑 (wwwMypage_library.md §5.7·§8).
+    """
+    logs = []
+    for g in page_slice:
+        ct = g['content_type']
+        cc = str(g['content_code']).strip()
+        log = _latest_view_log(member, ct, cc)
+        if log:
+            logs.append(log)
+
+    article_codes = list({str(l.content_code).strip() for l in logs if l.content_type == 'ARTICLE'})
+    video_codes = list({str(l.content_code).strip() for l in logs if l.content_type == 'VIDEO'})
+    seminar_codes = list({str(l.content_code).strip() for l in logs if l.content_type == 'SEMINAR'})
+
+    article_ids = [int(x) for x in article_codes if x.isdigit()]
+    article_map = {}
+    if article_ids:
+        for a in Article.objects.filter(id__in=article_ids, deletedAt__isnull=True).only(
+            'id', 'title', 'subtitle', 'thumbnail'
+        ):
+            article_map[str(a.id)] = a
+
+    vid_ints = []
+    for x in video_codes + seminar_codes:
+        if x.isdigit():
+            vid_ints.append(int(x))
+    vid_ints = list(set(vid_ints))
+    video_map = {}
+    seminar_map = {}
+    if vid_ints:
+        for v in Video.objects.filter(id__in=vid_ints, deletedAt__isnull=True).only(
+            'id', 'contentType', 'title', 'subtitle', 'thumbnail'
+        ):
+            key = str(v.id)
+            if v.contentType == 'video':
+                video_map[key] = v
+            elif v.contentType == 'seminar':
+                seminar_map[key] = v
+
+    out = []
+    for log in logs:
+        code = str(log.content_code).strip()
+        ct = log.content_type
+        row = {
+            'publicUserActivityLogId': log.public_user_activity_log_id,
+            'contentType': ct,
+            'contentCode': log.content_code,
+            'regDateTime': log.reg_date_time.isoformat() if log.reg_date_time else None,
+            'title': None,
+            'subtitle': None,
+            'thumbnail': None,
+            'contentMissing': False,
+        }
+        if ct == 'ARTICLE':
+            art = article_map.get(code)
+            if art:
+                row['title'] = art.title
+                row['subtitle'] = art.subtitle
+                row['thumbnail'] = _presign_article_thumb(art.thumbnail)
+            else:
+                row['title'] = DELETED_CONTENT_TITLE
+                row['contentMissing'] = True
+        elif ct == 'VIDEO':
+            vid = video_map.get(code)
+            if vid:
+                row['title'] = vid.title
+                row['subtitle'] = vid.subtitle
+                row['thumbnail'] = _presign_video_thumb(vid.thumbnail)
+            else:
+                row['title'] = DELETED_CONTENT_TITLE
+                row['contentMissing'] = True
+        elif ct == 'SEMINAR':
+            sem = seminar_map.get(code)
+            if sem:
+                row['title'] = sem.title
+                row['subtitle'] = sem.subtitle
+                row['thumbnail'] = _presign_video_thumb(sem.thumbnail)
+            else:
+                row['title'] = DELETED_CONTENT_TITLE
+                row['contentMissing'] = True
+        out.append(row)
+    return out
 
 
 CONTENT_TYPES = {'ARTICLE', 'VIDEO', 'SEMINAR'}
@@ -325,16 +450,35 @@ class LibraryMeViews(APIView):
                 create_error_response('인증이 필요합니다.', '01'),
                 status=status.HTTP_401_UNAUTHORIZED,
             )
-        page = max(1, int(request.query_params.get('page', 1)))
-        page_size = min(max(1, int(request.query_params.get('page_size', request.query_params.get('pageSize', 10)))), 50)
-        qs = PublicUserActivityLog.objects.filter(
-            user_id=member.pk,
-            activity_type=ACTIVITY_VIEW,
-        ).order_by('-reg_date_time')
-        total = qs.count()
+        try:
+            page = int(request.query_params.get('page', 1) or 1)
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = int(request.query_params.get('page_size', request.query_params.get('pageSize', 10)) or 10)
+        except (TypeError, ValueError):
+            page_size = 10
+        page_size = min(max(1, page_size), 50)
+        page = max(1, page)
+
+        # (contentType, contentCode) 당 최신 VIEW 시각 기준 중복 제거 후, 최신 순 (wwwMypage_library.md §8.7)
+        grouped = (
+            PublicUserActivityLog.objects.filter(user_id=member.pk, activity_type=ACTIVITY_VIEW)
+            .values('content_type', 'content_code')
+            .annotate(max_time=Max('reg_date_time'))
+            .order_by('-max_time')
+        )
+        total = grouped.count()
+        total_pages = max(1, (total + page_size - 1) // page_size) if total > 0 else 1
+        if total > 0 and page > total_pages:
+            page = total_pages
+        if total == 0:
+            page = 1
+
         start = (page - 1) * page_size
-        items = list(qs[start : start + page_size])
-        list_data = [_log_item_to_dict(log) for log in items]
+        page_slice = list(grouped[start : start + page_size])
+        list_data = _build_me_views_items(member, page_slice)
+
         return Response(
             create_success_response({
                 'list': list_data,

@@ -1,16 +1,34 @@
 """
 공개/사용자 API: 콘텐츠 질문 조회, 답변 등록
 - GET /api/content/{content_type}/{content_id}/questions/  질문 목록
+- GET /api/content/{content_type}/{content_id}/my-answers/  로그인 사용자의 해당 콘텐츠 답변 목록
 - POST /api/content/question-answer/  답변 등록
+- PATCH /api/content/question-answer/{answer_id}/  답변 수정
+- DELETE /api/content/question-answer/{answer_id}/  답변 삭제
 """
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import AllowAny  # 또는 IsAuthenticated 로 로그인 필수 시 변경
+from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from core.utils import create_success_response, create_error_response
+from sites.public_api.authentication import PublicJWTAuthentication
+from sites.public_api.models import PublicMemberShip
+
 from .models import ContentQuestion, ContentQuestionAnswer
-from .serializers import ContentQuestionPublicSerializer, ContentQuestionAnswerCreateSerializer
+from .serializers import (
+    ContentQuestionPublicSerializer,
+    ContentQuestionAnswerCreateSerializer,
+    ContentQuestionAnswerUpdateSerializer,
+)
+
+
+def _get_member_sid(request):
+    try:
+        member = PublicMemberShip.objects.get(email=request.user.email, is_active=True)
+        return member.member_sid
+    except PublicMemberShip.DoesNotExist:
+        return None
 
 
 class ContentQuestionListView(APIView):
@@ -33,10 +51,9 @@ class ContentQuestionListView(APIView):
 
 
 class ContentQuestionAnswerCreateView(APIView):
-    """POST /api/content/question-answer/  답변 등록"""
-    # 로그인 필수 시: authentication_classes = [JWT 등], permission_classes = [IsAuthenticated]
-    authentication_classes = []
-    permission_classes = [AllowAny]
+    """POST /api/content/question-answer/  답변 등록 (Authorization Bearer 또는 쿠키 accessToken)"""
+    authentication_classes = [PublicJWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = ContentQuestionAnswerCreateSerializer(data=request.data)
@@ -67,23 +84,12 @@ class ContentQuestionAnswerCreateView(APIView):
                 create_error_response('질문이 해당 콘텐츠와 일치하지 않습니다.', '01'),
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # 사용자 ID: request.user(인증 미들웨어) 또는 요청 body의 user_id. 실제 서비스에서는 JWT 등으로 user_id 확정 권장
-        user_id = None
-        if hasattr(request, 'user') and request.user and getattr(request.user, 'is_authenticated', False):
-            user_id = getattr(request.user, 'id', None) or getattr(request.user, 'user_id', None)
-        if user_id is None:
-            user_id = request.data.get('user_id')
+        # JWT의 user_id는 member_sid; content_question_answer.user_id는 동일 정수 키 사용
+        user_id = _get_member_sid(request)
         if user_id is None:
             return Response(
-                create_error_response('로그인이 필요합니다.', '01'),
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-        try:
-            user_id = int(user_id)
-        except (TypeError, ValueError):
-            return Response(
-                create_error_response('user_id가 올바르지 않습니다.', '01'),
-                status=status.HTTP_400_BAD_REQUEST,
+                create_error_response('회원 정보를 찾을 수 없습니다.', '04'),
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         if ContentQuestionAnswer.objects.filter(question_id=question_id, user_id=user_id).exists():
@@ -109,4 +115,110 @@ class ContentQuestionAnswerCreateView(APIView):
                 '답변이 등록되었습니다.',
             ),
             status=status.HTTP_201_CREATED,
+        )
+
+
+class ContentQuestionMyAnswersView(APIView):
+    """GET /api/content/{content_type}/{content_id}/my-answers/ — 로그인 사용자의 답변만"""
+
+    authentication_classes = [PublicJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, content_type, content_id):
+        if content_type not in ('ARTICLE', 'VIDEO', 'SEMINAR'):
+            return Response(
+                create_error_response('content_type은 ARTICLE, VIDEO, SEMINAR 중 하나여야 합니다.', '01'),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user_id = _get_member_sid(request)
+        if user_id is None:
+            return Response(
+                create_error_response('회원 정보를 찾을 수 없습니다.', '04'),
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        qs = ContentQuestionAnswer.objects.filter(
+            content_type=content_type,
+            content_id=content_id,
+            user_id=user_id,
+        ).order_by('question_id')
+        data = [
+            {
+                'answer_id': a.answer_id,
+                'question_id': a.question_id,
+                'answer_text': a.answer_text,
+            }
+            for a in qs
+        ]
+        return Response(create_success_response(data, '조회 성공'))
+
+
+class ContentQuestionAnswerDetailView(APIView):
+    """PATCH/DELETE /api/content/question-answer/{answer_id}/ — 본인 답변만"""
+
+    authentication_classes = [PublicJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, answer_id):
+        user_id = _get_member_sid(request)
+        if user_id is None:
+            return Response(
+                create_error_response('회원 정보를 찾을 수 없습니다.', '04'),
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            answer = ContentQuestionAnswer.objects.get(answer_id=answer_id)
+        except ContentQuestionAnswer.DoesNotExist:
+            return Response(
+                create_error_response('답변을 찾을 수 없습니다.', '04'),
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if answer.user_id != user_id:
+            return Response(
+                create_error_response('권한이 없습니다.', '03'),
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = ContentQuestionAnswerUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            msg = '; '.join(
+                f'{k}: {", ".join(str(e) for e in v)}'
+                for k, v in serializer.errors.items()
+            )
+            return Response(
+                create_error_response(msg or '입력값이 올바르지 않습니다.', '01'),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        answer.answer_text = serializer.validated_data['answer_text']
+        answer.save(update_fields=['answer_text'])
+        return Response(
+            create_success_response(
+                {'answer_id': answer.answer_id, 'question_id': answer.question_id},
+                '답변이 수정되었습니다.',
+            ),
+            status=status.HTTP_200_OK,
+        )
+
+    def delete(self, request, answer_id):
+        user_id = _get_member_sid(request)
+        if user_id is None:
+            return Response(
+                create_error_response('회원 정보를 찾을 수 없습니다.', '04'),
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            answer = ContentQuestionAnswer.objects.get(answer_id=answer_id)
+        except ContentQuestionAnswer.DoesNotExist:
+            return Response(
+                create_error_response('답변을 찾을 수 없습니다.', '04'),
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if answer.user_id != user_id:
+            return Response(
+                create_error_response('권한이 없습니다.', '03'),
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        qid = answer.question_id
+        answer.delete()
+        return Response(
+            create_success_response({'question_id': qid}, '답변이 삭제되었습니다.'),
+            status=status.HTTP_200_OK,
         )
