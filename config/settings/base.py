@@ -173,6 +173,8 @@ _cors_origins = [_normalize_origin(o) for o in _cors_raw if _normalize_origin(o)
 CORS_ALLOWED_ORIGINS = _cors_origins if _cors_origins else [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
     "https://dev.inde.kr",
     "http://dev.inde.kr",
 ]
@@ -240,6 +242,13 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
 JWT_ALGORITHM = "HS256"
 JWT_ACCESS_EXPIRATION_DELTA = 15 * 60  # 15분
 JWT_REFRESH_EXPIRATION_DELTA = 7 * 24 * 60 * 60  # 7일
+
+# public_api — refresh JWT HttpOnly 쿠키 (frontend_www / frontend_wwwRules.md §3)
+# www 미들웨어가 refresh를 읽으려면 프로덕션에서 Domain을 공통 eTLD로 둠 (예: .inde.kr)
+PUBLIC_JWT_REFRESH_COOKIE_NAME = os.getenv('PUBLIC_JWT_REFRESH_COOKIE_NAME', 'refreshToken')
+_public_refresh_domain = os.getenv('PUBLIC_JWT_REFRESH_COOKIE_DOMAIN', '').strip()
+PUBLIC_JWT_REFRESH_COOKIE_DOMAIN = _public_refresh_domain or None
+PUBLIC_JWT_REFRESH_COOKIE_SAMESITE = os.getenv('PUBLIC_JWT_REFRESH_COOKIE_SAMESITE', 'Lax')
 
 # Aligo SMS — 휴대폰 인증 (phoneVerificationAligo.md)
 ALIGO_API_KEY = (os.getenv("ALIGO_API_KEY") or "").strip()

@@ -19,6 +19,7 @@ import requests
 from core.models import AuditLog
 from sites.public_api.models import PublicMemberShip
 from sites.public_api.utils import create_public_jwt_tokens, create_oauth_pending_token
+from sites.public_api.jwt_cookies import attach_public_refresh_cookie
 
 logger = logging.getLogger(__name__)
 
@@ -216,11 +217,12 @@ class NaverCallbackView(View):
         from_signup = state_param.split(':')[0] == 'signup' if state_param else False
         query_params = {
             'access_token': tokens['access_token'],
-            'refresh_token': tokens['refresh_token'],
             'expires_in': str(tokens['expires_in']),
         }
         if from_signup:
             query_params['from'] = 'signup'
         query = urllib.parse.urlencode(query_params)
         logger.info('[NAVER_OAUTH] success, redirecting to %s', frontend_callback)
-        return HttpResponseRedirect(f'{frontend_callback}?{query}')
+        response = HttpResponseRedirect(f'{frontend_callback}?{query}')
+        attach_public_refresh_cookie(response, request, tokens['refresh_token'])
+        return response

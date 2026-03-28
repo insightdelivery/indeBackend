@@ -11,7 +11,10 @@ from django.conf import settings
 def get_token_from_cookie(request):
     """쿠키에서 access_token, refresh_token 추출. (Bearer 헤더는 axios에서 처리)"""
     access = request.COOKIES.get('accessToken') or ''
-    refresh = request.COOKIES.get('refreshToken') or ''
+    refresh_name = getattr(
+        settings, 'PUBLIC_JWT_REFRESH_COOKIE_NAME', 'refreshToken'
+    )
+    refresh = request.COOKIES.get(refresh_name) or ''
     return (access.strip(), refresh.strip())
 
 

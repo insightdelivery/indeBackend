@@ -14,6 +14,7 @@ from sites.public_api.views import (
     MeView,
     ProfileCompleteView,
     TokenRefreshView,
+    PublicLogoutView,
 )
 from sites.public_api.sms_views import (
     SendSmsVerificationView,
@@ -85,6 +86,8 @@ urlpatterns = [
     path('auth/login', LoginView.as_view(), name='public_api_auth_login_no_slash'),
     path('auth/tokenrefresh/', TokenRefreshView.as_view(), name='public_api_auth_token_refresh'),
     path('auth/tokenrefresh', TokenRefreshView.as_view(), name='public_api_auth_token_refresh_no_slash'),
+    path('auth/logout/', PublicLogoutView.as_view(), name='public_api_auth_logout'),
+    path('auth/logout', PublicLogoutView.as_view(), name='public_api_auth_logout_no_slash'),
     path('auth/verify-email/', VerifyEmailView.as_view(), name='public_api_verify_email'),
     path('auth/verify-email', VerifyEmailView.as_view(), name='public_api_verify_email_no_slash'),
     path('auth/resend-verification-email/', ResendVerificationEmailView.as_view(), name='public_api_resend_verification'),

@@ -11,16 +11,45 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
+from django.conf import settings
 from django.utils import timezone
 from core.models import AuditLog
 from sites.public_api.models import PhoneSmsVerification, PublicMemberShip
 from sites.public_api.phone_normalize import is_valid_kr_mobile, normalize_phone_kr, phone_already_registered
 from sites.public_api.serializers import RegisterSerializer, LoginSerializer
-from sites.public_api.utils import create_public_jwt_tokens, get_token_from_request, verify_jwt_token, verify_oauth_pending_token
+from sites.public_api.utils import (
+    create_public_jwt_tokens,
+    get_token_from_cookie,
+    get_token_from_request,
+    verify_jwt_token,
+    verify_oauth_pending_token,
+)
+from sites.public_api.jwt_cookies import attach_public_refresh_cookie, clear_public_refresh_cookie
 from sites.public_api import email_verification
 from sites.public_api.kakao_oauth import PLACEHOLDER_EMAIL_DOMAIN
 
 logger = logging.getLogger(__name__)
+
+
+def _jwt_login_response(request, tokens: dict, user_payload: dict, status_code: int) -> Response:
+    """access·expires·user는 JSON, refresh는 HttpOnly 쿠키만 (frontend_wwwRules.md)."""
+    if getattr(settings, 'PUBLIC_JWT_DEBUG_LOG_TOKENS', settings.DEBUG):
+        logger.warning(
+            '[JWT_DEBUG][login] access_token=%s refresh_token=%s (refresh는 응답 Set-Cookie로만 전송)',
+            tokens.get('access_token', ''),
+            tokens.get('refresh_token', ''),
+        )
+    resp = Response(
+        {
+            'access_token': tokens['access_token'],
+            'expires_in': tokens['expires_in'],
+            'user': user_payload,
+        },
+        status=status_code,
+    )
+    attach_public_refresh_cookie(resp, request, tokens['refresh_token'])
+    return resp
+
 
 # 회원정보 휴대폰 변경 SMS 인증 완료 후 저장까지 허용 시간 (wwwMypage_userInfo §5.2)
 PROFILE_PHONE_VERIFY_MAX_AGE_SEC = 15 * 60
@@ -221,14 +250,11 @@ class RegisterView(APIView):
                 user_agent=request.META.get('HTTP_USER_AGENT', ''),
                 details={'status': 'success', 'action': 'register'},
             )
-            return Response(
-                {
-                    'access_token': tokens['access_token'],
-                    'refresh_token': tokens['refresh_token'],
-                    'expires_in': tokens['expires_in'],
-                    'user': _user_response(member),
-                },
-                status=status.HTTP_201_CREATED,
+            return _jwt_login_response(
+                request,
+                tokens,
+                _user_response(member),
+                status.HTTP_201_CREATED,
             )
         except Exception as e:
             return Response({
@@ -284,12 +310,23 @@ class LoginView(APIView):
             user_agent=request.META.get('HTTP_USER_AGENT', ''),
             details={'status': 'success'}
         )
-        return Response({
-            'access_token': tokens['access_token'],
-            'refresh_token': tokens['refresh_token'],
-            'expires_in': tokens['expires_in'],
-            'user': _user_response(member),
-        }, status=status.HTTP_200_OK)
+        return _jwt_login_response(
+            request,
+            tokens,
+            _user_response(member),
+            status.HTTP_200_OK,
+        )
+
+
+class PublicLogoutView(APIView):
+    """POST /auth/logout — refresh HttpOnly 쿠키 삭제 (CURSOR_apiLoginRules.md)."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        resp = Response({'success': True}, status=status.HTTP_200_OK)
+        clear_public_refresh_cookie(resp, request)
+        return resp
 
 
 class OAuthCompleteSignupView(APIView):
@@ -377,14 +414,11 @@ class OAuthCompleteSignupView(APIView):
             user_agent=request.META.get('HTTP_USER_AGENT', ''),
             details={'status': 'success', 'action': 'oauth_phone_complete', 'provider': provider.lower()},
         )
-        return Response(
-            {
-                'access_token': tokens['access_token'],
-                'refresh_token': tokens['refresh_token'],
-                'expires_in': tokens['expires_in'],
-                'user': _user_response(member),
-            },
-            status=status.HTTP_201_CREATED,
+        return _jwt_login_response(
+            request,
+            tokens,
+            _user_response(member),
+            status.HTTP_201_CREATED,
         )
 
 
@@ -633,16 +667,41 @@ class ProfileCompleteView(APIView):
 
 class TokenRefreshView(APIView):
     """
-    Body의 refresh_token으로 새 액세스/리프레시 토큰 발급.
-    frontend_www 로그인 유지(401 시 갱신 재시도)용.
+    새 access 발급. refresh는 (1) HttpOnly 쿠키 또는 (2) Body refresh_token — 하위 호환.
+    응답: JSON에 access_token·expires_in·user만; 새 refresh는 Set-Cookie(HttpOnly)만.
     """
+
     permission_classes = [AllowAny]
 
     def post(self, request):
-        refresh_token = (request.data or {}).get('refresh_token') or ''
+        data = request.data if isinstance(request.data, dict) else {}
+        refresh_from_body = (data.get('refresh_token') or '').strip()
+        refresh_token = refresh_from_body
+        refresh_source = 'body' if refresh_token else None
+        if not refresh_token:
+            _, refresh_token = get_token_from_cookie(request)
+            refresh_token = (refresh_token or '').strip()
+            if refresh_token:
+                refresh_source = 'cookie'
+        debug_tokens = getattr(settings, 'PUBLIC_JWT_DEBUG_LOG_TOKENS', settings.DEBUG)
+        if debug_tokens:
+            cookie_header = request.META.get('HTTP_COOKIE', '') or ''
+            cookie_name = getattr(settings, 'PUBLIC_JWT_REFRESH_COOKIE_NAME', 'refreshToken')
+            has_refresh_cookie_name = cookie_name in cookie_header
+            logger.warning(
+                '[JWT_DEBUG][tokenrefresh] 수신 source=%s refresh_len=%s cookie_name=%s Cookie헤더에_이름포함=%s',
+                refresh_source or '없음',
+                len(refresh_token) if refresh_token else 0,
+                cookie_name,
+                has_refresh_cookie_name,
+            )
+            if refresh_token:
+                logger.warning('[JWT_DEBUG][tokenrefresh] refresh_token=%s', refresh_token)
         if not refresh_token:
             return Response(
-                {'error': 'refresh_token이 필요합니다.'},
+                {
+                    'error': 'refresh_token이 필요합니다. (HttpOnly 쿠키 또는 Body)',
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
         payload = verify_jwt_token(refresh_token, token_type='refresh')
@@ -665,9 +724,19 @@ class TokenRefreshView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         tokens = create_public_jwt_tokens(member)
-        return Response({
-            'access_token': tokens['access_token'],
-            'refresh_token': tokens['refresh_token'],
-            'expires_in': tokens['expires_in'],
-            'user': _user_response(member),
-        }, status=status.HTTP_200_OK)
+        if debug_tokens:
+            logger.warning(
+                '[JWT_DEBUG][tokenrefresh] 발급 완료 access_token=%s refresh_token(Set-Cookie)=%s',
+                tokens.get('access_token', ''),
+                tokens.get('refresh_token', ''),
+            )
+        resp = Response(
+            {
+                'access_token': tokens['access_token'],
+                'expires_in': tokens['expires_in'],
+                'user': _user_response(member),
+            },
+            status=status.HTTP_200_OK,
+        )
+        attach_public_refresh_cookie(resp, request, tokens['refresh_token'])
+        return resp
