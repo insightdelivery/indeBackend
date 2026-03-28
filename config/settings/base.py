@@ -250,6 +250,12 @@ _public_refresh_domain = os.getenv('PUBLIC_JWT_REFRESH_COOKIE_DOMAIN', '').strip
 PUBLIC_JWT_REFRESH_COOKIE_DOMAIN = _public_refresh_domain or None
 PUBLIC_JWT_REFRESH_COOKIE_SAMESITE = os.getenv('PUBLIC_JWT_REFRESH_COOKIE_SAMESITE', 'Lax')
 
+# admin_api — 관리자 refresh JWT HttpOnly (frontend_adminRules.md, /adminMember/tokenrefresh)
+ADMIN_JWT_REFRESH_COOKIE_NAME = os.getenv('ADMIN_JWT_REFRESH_COOKIE_NAME', 'adminRefreshToken')
+_admin_refresh_domain = os.getenv('ADMIN_JWT_REFRESH_COOKIE_DOMAIN', '').strip()
+ADMIN_JWT_REFRESH_COOKIE_DOMAIN = _admin_refresh_domain or None
+ADMIN_JWT_REFRESH_COOKIE_SAMESITE = os.getenv('ADMIN_JWT_REFRESH_COOKIE_SAMESITE', 'Lax')
+
 # Aligo SMS — 휴대폰 인증 (phoneVerificationAligo.md)
 ALIGO_API_KEY = (os.getenv("ALIGO_API_KEY") or "").strip()
 ALIGO_USER_ID = (os.getenv("ALIGO_USER_ID") or "").strip()

@@ -9,12 +9,60 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.utils import timezone
+from django.conf import settings
 from datetime import datetime
 from api.models import AdminMemberShip
 from core.models import AuditLog
 from api.adminMember.serializers import AdminRegisterSerializer, AdminLoginSerializer, AdminUpdateSerializer
 from api.adminMember.utils import create_admin_member_jwt_tokens
 from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.jwt_cookies import attach_admin_refresh_cookie, clear_admin_refresh_cookie
+
+
+def _admin_member_from_refresh_jwt(refresh_token_str, dt_timezone):
+    """
+    refresh JWT 문자열로 AdminMemberShip 조회.
+    Returns (user|None, error_response|None).
+    """
+    import jwt
+
+    try:
+        payload = jwt.decode(
+            refresh_token_str,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+    except jwt.ExpiredSignatureError:
+        return None, Response(
+            {'error': '리프레시 토큰이 만료되었습니다. 다시 로그인해주세요.'},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+    except jwt.InvalidTokenError:
+        return None, Response(
+            {'error': '유효하지 않은 리프레시 토큰입니다.'},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+    if payload.get('token_type') != 'refresh' or payload.get('site') != 'admin_api':
+        return None, Response(
+            {'error': '잘못된 리프레시 토큰입니다.'},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+    user_id = payload.get('user_id')
+    if not user_id:
+        return None, Response({'error': '토큰에 사용자 ID가 없습니다.'}, status=status.HTTP_401_UNAUTHORIZED)
+    try:
+        user = AdminMemberShip.objects.get(memberShipSid=user_id, is_active=True)
+    except AdminMemberShip.DoesNotExist:
+        return None, Response({'error': '사용자를 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
+    refresh_iat = payload.get('iat')
+    if refresh_iat is not None:
+        refresh_iat = datetime.fromtimestamp(refresh_iat, tz=dt_timezone.utc)
+        if user.token_issued_at and refresh_iat < user.token_issued_at:
+            return None, Response(
+                {'error': '이 토큰은 로그아웃되어 무효화되었습니다.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+    return user, None
 
 
 class AdminRegisterView(APIView):
@@ -151,9 +199,9 @@ class AdminLoginView(APIView):
         
         응답:
         - access_token: Access Token (15분 만료)
-        - refresh_token: Refresh Token (7일 만료)
         - expires_in: Access Token 만료 시간 (초)
         - user: 사용자 정보
+        - refresh_token: JSON에 포함하지 않음 — Set-Cookie(HttpOnly)로만 발급
         """
         print(f"\n{'='*60}")
         print(f"[Login Debug] 로그인 API 호출됨")
@@ -302,10 +350,9 @@ class AdminLoginView(APIView):
                 }
             )
             
-            # 성공 응답
-            return Response({
+            # 성공 응답 (refresh 는 HttpOnly 쿠키만 — JSON 미포함)
+            resp = Response({
                 'access_token': tokens['access_token'],
-                'refresh_token': tokens['refresh_token'],
                 'expires_in': tokens['expires_in'],
                 'user': {
                     'memberShipSid': str(admin_member.memberShipSid),
@@ -319,6 +366,8 @@ class AdminLoginView(APIView):
                     'login_count': admin_member.login_count,
                 }
             }, status=status.HTTP_200_OK)
+            attach_admin_refresh_cookie(resp, request, tokens['refresh_token'])
+            return resp
             
         except Exception as e:
             import traceback
@@ -348,73 +397,48 @@ class AdminLoginView(APIView):
 
 class TokenRefreshView(APIView):
     """
-    액세스/리프레시 토큰 갱신 API.
-    - Body에 refresh_token이 있으면 refresh_token으로 사용자 식별 후 새 토큰 발급 (다중 탭·로그인 풀림 방지).
-    - 없으면 Authorization Bearer access_token(만료 허용) 방식으로 동작 (하위 호환).
+    관리자 토큰 갱신 (frontend_adminRules.md — refresh 는 HttpOnly 쿠키 중심).
+    우선순위: (1) HttpOnly refresh 쿠키 (2) Body refresh_token (하위 호환) (3) Bearer access(만료 무시, 하위 호환)
+    응답 JSON: access_token, expires_in, user 만 — 새 refresh 는 Set-Cookie(HttpOnly).
     """
-    permission_classes = [AllowAny]  # 인증 없이도 접근 가능 (토큰은 수동 검증)
-    
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
     def post(self, request):
         """
-        토큰 갱신 처리
-        
-        요청 (둘 중 하나):
-        - Body에 refresh_token (권장): 리프레시 토큰으로 사용자 식별, 만료된 토큰은 거부
-        - Authorization 헤더에 Bearer {access_token} (만료된 토큰도 허용)
-        
-        응답:
-        - access_token, refresh_token, expires_in, user
+        토큰 갱신: 빈 JSON {} 만으로도 동작 가능(withCredentials 로 쿠키 전송 시).
         """
         try:
             import jwt
-            from django.conf import settings
             from datetime import timezone as dt_timezone
-            
+
             user = None
-            refresh_token_from_body = (request.data or {}).get('refresh_token')
-            
-            # 1) Body에 refresh_token이 있으면 해당 토큰으로 사용자 식별 (만료 검사함)
-            if refresh_token_from_body:
-                try:
-                    payload = jwt.decode(
-                        refresh_token_from_body,
-                        settings.JWT_SECRET_KEY,
-                        algorithms=[settings.JWT_ALGORITHM],
-                    )
-                except jwt.ExpiredSignatureError:
-                    return Response({
-                        'error': '리프레시 토큰이 만료되었습니다. 다시 로그인해주세요.'
-                    }, status=status.HTTP_401_UNAUTHORIZED)
-                except jwt.InvalidTokenError:
-                    return Response({
-                        'error': '유효하지 않은 리프레시 토큰입니다.'
-                    }, status=status.HTTP_401_UNAUTHORIZED)
-                if payload.get('token_type') != 'refresh' or payload.get('site') != 'admin_api':
-                    return Response({
-                        'error': '잘못된 리프레시 토큰입니다.'
-                    }, status=status.HTTP_401_UNAUTHORIZED)
-                user_id = payload.get('user_id')
-                if not user_id:
-                    return Response({'error': '토큰에 사용자 ID가 없습니다.'}, status=status.HTTP_401_UNAUTHORIZED)
-                try:
-                    user = AdminMemberShip.objects.get(memberShipSid=user_id, is_active=True)
-                except AdminMemberShip.DoesNotExist:
-                    return Response({'error': '사용자를 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
-            
-            # 2) Body에 refresh_token이 없으면 기존 방식: Authorization Bearer access_token
-            if user is None:
+            data = request.data if isinstance(request.data, dict) else {}
+            cookie_name = getattr(settings, 'ADMIN_JWT_REFRESH_COOKIE_NAME', 'adminRefreshToken')
+            refresh_from_cookie = (request.COOKIES.get(cookie_name) or '').strip()
+            refresh_from_body = (data.get('refresh_token') or '').strip()
+            refresh_token_str = refresh_from_cookie or refresh_from_body
+
+            if refresh_token_str:
+                user, err = _admin_member_from_refresh_jwt(refresh_token_str, dt_timezone)
+                if err:
+                    return err
+            else:
                 auth_header = request.META.get('HTTP_AUTHORIZATION', '')
                 if not auth_header or not auth_header.startswith('Bearer '):
-                    return Response({
-                        'error': 'Authorization 헤더에 Bearer 토큰 또는 Body에 refresh_token이 필요합니다.'
-                    }, status=status.HTTP_401_UNAUTHORIZED)
+                    return Response(
+                        {
+                            'error': 'refresh HttpOnly 쿠키, Body의 refresh_token, 또는 Authorization Bearer access가 필요합니다.'
+                        },
+                        status=status.HTTP_401_UNAUTHORIZED,
+                    )
                 token = auth_header.split(' ')[1]
                 try:
                     payload = jwt.decode(
                         token,
                         settings.JWT_SECRET_KEY,
                         algorithms=[settings.JWT_ALGORITHM],
-                        options={"verify_exp": False}
+                        options={"verify_exp": False},
                     )
                 except jwt.InvalidTokenError:
                     return Response({'error': '유효하지 않은 토큰입니다.'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -427,19 +451,17 @@ class TokenRefreshView(APIView):
                     user = AdminMemberShip.objects.get(memberShipSid=user_id, is_active=True)
                 except AdminMemberShip.DoesNotExist:
                     return Response({'error': '사용자를 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
-                # 액세스 토큰 발급 시각이 로그아웃/갱신 이전이면 무효
                 token_issued_at = payload.get('iat')
                 if token_issued_at:
                     token_issued_at = datetime.fromtimestamp(token_issued_at, tz=dt_timezone.utc)
                     if user.token_issued_at and token_issued_at < user.token_issued_at:
-                        return Response({
-                            'error': '이 토큰은 로그아웃되어 무효화되었습니다.'
-                        }, status=status.HTTP_401_UNAUTHORIZED)
-            
-            # 새로운 JWT 토큰 생성
+                        return Response(
+                            {'error': '이 토큰은 로그아웃되어 무효화되었습니다.'},
+                            status=status.HTTP_401_UNAUTHORIZED,
+                        )
+
             tokens = create_admin_member_jwt_tokens(user)
-            
-            # 토큰 갱신 로그 기록
+
             AuditLog.objects.create(
                 user_id=str(user.memberShipSid),
                 site_slug='admin_api',
@@ -453,28 +475,33 @@ class TokenRefreshView(APIView):
                     'action': 'token_refresh',
                     'memberShipId': user.memberShipId,
                     'memberShipName': user.memberShipName,
-                }
+                },
             )
-            
-            return Response({
-                'access_token': tokens['access_token'],
-                'refresh_token': tokens['refresh_token'],
-                'expires_in': tokens['expires_in'],
-                'user': {
-                    'memberShipSid': str(user.memberShipSid),
-                    'memberShipId': user.memberShipId,
-                    'memberShipName': user.memberShipName,
-                    'memberShipEmail': user.memberShipEmail,
-                    'memberShipPhone': user.memberShipPhone,
-                    'memberShipLevel': user.memberShipLevel,
-                    'is_admin': user.is_admin,
-                }
-            }, status=status.HTTP_200_OK)
-            
+
+            resp = Response(
+                {
+                    'access_token': tokens['access_token'],
+                    'expires_in': tokens['expires_in'],
+                    'user': {
+                        'memberShipSid': str(user.memberShipSid),
+                        'memberShipId': user.memberShipId,
+                        'memberShipName': user.memberShipName,
+                        'memberShipEmail': user.memberShipEmail,
+                        'memberShipPhone': user.memberShipPhone,
+                        'memberShipLevel': user.memberShipLevel,
+                        'is_admin': user.is_admin,
+                    },
+                },
+                status=status.HTTP_200_OK,
+            )
+            attach_admin_refresh_cookie(resp, request, tokens['refresh_token'])
+            return resp
+
         except Exception as e:
-            return Response({
-                'error': f'토큰 갱신 처리 중 오류가 발생했습니다: {str(e)}'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {'error': f'토큰 갱신 처리 중 오류가 발생했습니다: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
     
     def get_client_ip(self, request):
         """클라이언트 IP 주소 추출"""
@@ -532,9 +559,11 @@ class AdminLogoutView(APIView):
                 }
             )
             
-            return Response({
+            resp = Response({
                 'message': '로그아웃되었습니다.'
             }, status=status.HTTP_200_OK)
+            clear_admin_refresh_cookie(resp, request)
+            return resp
             
         except Exception as e:
             return Response({
