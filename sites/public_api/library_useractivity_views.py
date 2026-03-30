@@ -9,6 +9,7 @@ from django.db import connection
 from django.db.models import Avg, Count, Max, Sum
 from django.utils import timezone
 
+from core.models import SysCodeManager
 from core.utils import create_success_response, create_error_response
 from sites.admin_api.articles.models import Article
 from sites.admin_api.articles.utils import get_presigned_thumbnail_url as article_presigned_thumbnail
@@ -171,6 +172,123 @@ def _build_me_views_items(member, page_slice: list) -> list:
                 row['contentMissing'] = True
         out.append(row)
     return out
+
+
+def _attach_content_master_to_activity_logs(logs: list) -> list:
+    """북마크·별점(RATING) 등 activity 로그에 아티클/비디오 마스터를 붙여 썸네일(S3 presign)·제목·부제·카테고리명을 채운다."""
+    if not logs:
+        return []
+
+    article_codes = list({str(l.content_code).strip() for l in logs if l.content_type == 'ARTICLE'})
+    video_codes = list({str(l.content_code).strip() for l in logs if l.content_type == 'VIDEO'})
+    seminar_codes = list({str(l.content_code).strip() for l in logs if l.content_type == 'SEMINAR'})
+
+    article_ids = [int(x) for x in article_codes if x.isdigit()]
+    article_map = {}
+    if article_ids:
+        for a in Article.objects.filter(id__in=article_ids, deletedAt__isnull=True).only(
+            'id', 'title', 'subtitle', 'thumbnail', 'category'
+        ):
+            article_map[str(a.id)] = a
+
+    vid_ints = []
+    for x in video_codes + seminar_codes:
+        if x.isdigit():
+            vid_ints.append(int(x))
+    vid_ints = list(set(vid_ints))
+    video_map = {}
+    seminar_map = {}
+    if vid_ints:
+        for v in Video.objects.filter(id__in=vid_ints, deletedAt__isnull=True).only(
+            'id', 'contentType', 'title', 'subtitle', 'thumbnail', 'category'
+        ):
+            key = str(v.id)
+            if v.contentType == 'video':
+                video_map[key] = v
+            elif v.contentType == 'seminar':
+                seminar_map[key] = v
+
+    category_codes = set()
+    for log in logs:
+        code = str(log.content_code).strip()
+        ct = log.content_type
+        meta = None
+        if ct == 'ARTICLE':
+            meta = article_map.get(code)
+        elif ct == 'VIDEO':
+            meta = video_map.get(code)
+        elif ct == 'SEMINAR':
+            meta = seminar_map.get(code)
+        if meta:
+            raw = (getattr(meta, 'category', None) or '').strip()
+            if raw:
+                category_codes.add(raw)
+
+    category_name_by_code = {}
+    if category_codes:
+        for sc in SysCodeManager.objects.filter(
+            sysCodeSid__in=list(category_codes),
+            sysCodeUse='Y',
+        ).only('sysCodeSid', 'sysCodeName'):
+            name = (sc.sysCodeName or '').strip()
+            if name:
+                category_name_by_code[sc.sysCodeSid] = name
+
+    out = []
+    for log in logs:
+        code = str(log.content_code).strip()
+        ct = log.content_type
+        row = {
+            'publicUserActivityLogId': log.public_user_activity_log_id,
+            'contentType': ct,
+            'contentCode': log.content_code,
+            'regDateTime': log.reg_date_time.isoformat() if log.reg_date_time else None,
+            'ratingValue': log.rating_value,
+            'title': None,
+            'subtitle': None,
+            'thumbnail': None,
+            'category': None,
+            'contentMissing': False,
+        }
+        if ct == 'ARTICLE':
+            art = article_map.get(code)
+            if art:
+                row['title'] = art.title
+                row['subtitle'] = (art.subtitle or '').strip() or None
+                row['thumbnail'] = _presign_article_thumb(art.thumbnail)
+                cat_raw = (art.category or '').strip()
+                row['category'] = category_name_by_code.get(cat_raw) if cat_raw else None
+            else:
+                row['title'] = DELETED_CONTENT_TITLE
+                row['contentMissing'] = True
+        elif ct == 'VIDEO':
+            vid = video_map.get(code)
+            if vid:
+                row['title'] = vid.title
+                row['subtitle'] = (vid.subtitle or '').strip() or None
+                row['thumbnail'] = _presign_video_thumb(vid.thumbnail)
+                cat_raw = (vid.category or '').strip()
+                row['category'] = category_name_by_code.get(cat_raw) if cat_raw else None
+            else:
+                row['title'] = DELETED_CONTENT_TITLE
+                row['contentMissing'] = True
+        elif ct == 'SEMINAR':
+            sem = seminar_map.get(code)
+            if sem:
+                row['title'] = sem.title
+                row['subtitle'] = (sem.subtitle or '').strip() or None
+                row['thumbnail'] = _presign_video_thumb(sem.thumbnail)
+                cat_raw = (sem.category or '').strip()
+                row['category'] = category_name_by_code.get(cat_raw) if cat_raw else None
+            else:
+                row['title'] = DELETED_CONTENT_TITLE
+                row['contentMissing'] = True
+        out.append(row)
+    return out
+
+
+def _build_me_bookmarks_items(logs: list) -> list:
+    return _attach_content_master_to_activity_logs(logs)
 
 
 CONTENT_TYPES = {'ARTICLE', 'VIDEO', 'SEMINAR'}
@@ -510,7 +628,7 @@ class LibraryMeBookmarks(APIView):
         total = qs.count()
         start = (page - 1) * page_size
         items = list(qs[start : start + page_size])
-        list_data = [_log_item_to_dict(log) for log in items]
+        list_data = _build_me_bookmarks_items(items)
         return Response(
             create_success_response({
                 'list': list_data,
@@ -565,7 +683,7 @@ class LibraryMeRatings(APIView):
         }
         start = (page - 1) * page_size
         items = list(qs[start : start + page_size])
-        list_data = [_log_item_to_dict(log) for log in items]
+        list_data = _attach_content_master_to_activity_logs(items)
         return Response(
             create_success_response({
                 'summary': summary,

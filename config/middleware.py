@@ -4,6 +4,7 @@ SiteCorsMiddleware: site_meta['cors'] 기준으로 CORS 헤더 추가 (실서버
 """
 from django.utils.deprecation import MiddlewareMixin
 from django.http import HttpResponse
+from django.http.request import split_domain_port
 from config.site_router import SITE_MAP
 
 # CORS 응답 헤더에 공통으로 쓸 값
@@ -61,15 +62,24 @@ class CurrentSiteMiddleware(MiddlewareMixin):
         # Host 헤더에서 도메인 추출
         # nginx/로드밸런서 뒤에서 실행 시 X-Forwarded-Host 헤더도 확인
         host = request.get_host()
-        
-        # X-Forwarded-Host 헤더가 있으면 우선 사용 (프록시 환경)
-        forwarded_host = request.META.get('HTTP_X_FORWARDED_HOST')
-        if forwarded_host:
-            # 여러 호스트가 쉼표로 구분되어 있을 수 있음 (첫 번째 것 사용)
-            host = forwarded_host.split(',')[0].strip()
-        
-        # SITE_MAP에서 매칭되는 사이트 정보 찾기
-        site_info = SITE_MAP.get(host)
+
+        # SITE_MAP 키는 보통 "host:port" 또는 "api.inde.kr" 형태. X-Forwarded-Host에
+        # 포트가 없으면 SITE_MAP.get("local.inde.kr:8001") 등과 불일치 → 404가 난다.
+        candidates = [host]
+        forwarded_raw = request.META.get("HTTP_X_FORWARDED_HOST")
+        if forwarded_raw:
+            fh = forwarded_raw.split(",")[0].strip()
+            if fh:
+                candidates.append(fh)
+                _d, port_from_request = split_domain_port(host)
+                if port_from_request and ":" not in fh:
+                    candidates.append(f"{fh}:{port_from_request}")
+
+        site_info = None
+        for h in candidates:
+            site_info = SITE_MAP.get(h)
+            if site_info:
+                break
         
         if site_info:
             # request에 사이트 메타 정보 주입

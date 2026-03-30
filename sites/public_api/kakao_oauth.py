@@ -86,7 +86,6 @@ class KakaoCallbackView(View):
         code = request.GET.get('code')
         error = request.GET.get('error')
         frontend_callback = _frontend_callback_url()
-        logger.info('[KAKAO_OAUTH] callback code=%s error=%s', 'yes' if code else 'no', error)
 
         if error:
             logger.warning('Kakao OAuth error: %s', error)
@@ -112,7 +111,6 @@ class KakaoCallbackView(View):
             redirect_uri = base64.urlsafe_b64decode(state_b64).decode()
         except Exception:
             redirect_uri = request.build_absolute_uri('/auth/kakao/callback/')
-        logger.info('Kakao OAuth token exchange redirect_uri=%s', redirect_uri)
 
         token_body = {
             'grant_type': 'authorization_code',
@@ -248,7 +246,6 @@ class KakaoCallbackView(View):
         if from_signup:
             query_params['from'] = 'signup'
         query = urllib.parse.urlencode(query_params)
-        logger.info('[KAKAO_OAUTH] success redirect %s', frontend_callback)
         response = HttpResponseRedirect(f'{frontend_callback}?{query}')
         attach_public_refresh_cookie(response, request, tokens['refresh_token'])
         return response

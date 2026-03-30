@@ -2,6 +2,8 @@
 관리자 API URL 설정
 순환 import 방지를 위해 views를 지연 로드합니다.
 """
+from django.conf import settings
+from django.conf.urls.static import static
 from django.urls import path, include
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -74,4 +76,6 @@ def get_urlpatterns():
 
 # urlpatterns를 함수에서 가져옴
 urlpatterns = get_urlpatterns()
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

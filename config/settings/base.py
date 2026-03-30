@@ -129,6 +129,9 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+# 1:1 문의 첨부 등 사용자 업로드 (nginx 등에서 /media/ 프록시 가능)
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -249,6 +252,14 @@ PUBLIC_JWT_REFRESH_COOKIE_NAME = os.getenv('PUBLIC_JWT_REFRESH_COOKIE_NAME', 're
 _public_refresh_domain = os.getenv('PUBLIC_JWT_REFRESH_COOKIE_DOMAIN', '').strip()
 PUBLIC_JWT_REFRESH_COOKIE_DOMAIN = _public_refresh_domain or None
 PUBLIC_JWT_REFRESH_COOKIE_SAMESITE = os.getenv('PUBLIC_JWT_REFRESH_COOKIE_SAMESITE', 'Lax')
+# True면 POST /auth/tokenrefresh 에서 수신한 refresh JWT 전체를 로그(운영 비권장). 미설정 시 DEBUG 와 동일.
+_tvr = os.getenv('PUBLIC_JWT_TOKENREFRESH_VERBOSE_LOG', '').strip().lower()
+if _tvr in ('1', 'true', 'yes'):
+    PUBLIC_JWT_TOKENREFRESH_VERBOSE_LOG = True
+elif _tvr in ('0', 'false', 'no'):
+    PUBLIC_JWT_TOKENREFRESH_VERBOSE_LOG = False
+else:
+    PUBLIC_JWT_TOKENREFRESH_VERBOSE_LOG = DEBUG
 
 # admin_api — 관리자 refresh JWT HttpOnly (frontend_adminRules.md, /adminMember/tokenrefresh)
 ADMIN_JWT_REFRESH_COOKIE_NAME = os.getenv('ADMIN_JWT_REFRESH_COOKIE_NAME', 'adminRefreshToken')
@@ -280,6 +291,14 @@ FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o755  # 디렉토리 권한
 import sys
 if os.getenv("DISALLOW_MIGRATE", "0") == "1" and "migrate" in sys.argv:
     raise SystemExit("Migrations are disabled in this environment.")
+
+# runserver 요청 로그("GET /api/..." 한 줄씩, 로그 모듈명은 basehttp) — django.server INFO
+# 기본은 WARNING으로 숨김. 다시 보려면 env에 DJANGO_RUNSERVER_ACCESS_LOG=1
+_RUNSERVER_ACCESS_LEVEL = (
+    "INFO"
+    if os.getenv("DJANGO_RUNSERVER_ACCESS_LOG", "").lower() in ("1", "true", "yes")
+    else "WARNING"
+)
 
 # 로깅 설정
 LOGGING = {
@@ -316,6 +335,11 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'django.server': {
+            'handlers': ['console', 'file'],
+            'level': _RUNSERVER_ACCESS_LEVEL,
+            'propagate': False,
+        },
         'sites.admin_api.articles': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
@@ -323,7 +347,7 @@ LOGGING = {
         },
         'core.s3_storage': {
             'handlers': ['console', 'file'],
-            'level': 'DEBUG',
+            'level': 'INFO',
             'propagate': False,
         },
         'core': {

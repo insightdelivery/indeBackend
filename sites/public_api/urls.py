@@ -1,6 +1,8 @@
 """
 공개 API URL 설정
 """
+from django.conf import settings
+from django.conf.urls.static import static
 from django.urls import path, include
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -28,7 +30,11 @@ from sites.public_api.account_recovery_views import (
     VerifyPasswordResetCodeView,
     ResetPasswordView,
 )
-from sites.public_api.syscode_views import SysCodeByParentView, SysCodeBulkByParentsView
+from sites.public_api.syscode_views import (
+    SysCodeByParentView,
+    SysCodeBulkByParentsView,
+    SysCodeListByParentsSidView,
+)
 from sites.public_api.google_oauth import GoogleRedirectView, GoogleCallbackView
 from sites.public_api.naver_oauth import NaverRedirectView, NaverCallbackView
 from sites.public_api.kakao_oauth import KakaoRedirectView, KakaoCallbackView
@@ -131,6 +137,9 @@ urlpatterns = [
     path('systemmanage/syscode/by_parent', SysCodeByParentView.as_view(), name='public_api_syscode_by_parent_no_slash'),
     path('systemmanage/syscode/bulk/', SysCodeBulkByParentsView.as_view(), name='public_api_syscode_bulk'),
     path('systemmanage/syscode/bulk', SysCodeBulkByParentsView.as_view(), name='public_api_syscode_bulk_no_slash'),
+    # GET /systemmanage/syscode?sysCodeParentsSid= — by_parent와 동일 쿼리(관리자 list 호환)
+    path('systemmanage/syscode/', SysCodeListByParentsSidView.as_view(), name='public_api_syscode_list'),
+    path('systemmanage/syscode', SysCodeListByParentsSidView.as_view(), name='public_api_syscode_list_no_slash'),
     # 공지/FAQ/1:1 문의 게시판 (후행 슬래시 없이 매칭 — urlNoTrailingSlashPolicy)
     # include() 부모에 '.../xxx/' 가 있어야 /api/xxx/<하위> 가 자식 urlconf로 넘어감 (Django path 규칙)
     path('api/notices/', include('apps.notice.urls')),
@@ -194,5 +203,8 @@ urlpatterns = [
     path('api/library/ranking/weekly', LibraryRankingWeeklyCrossView.as_view()),
     path('api/library/ranking/weekly/', LibraryRankingWeeklyCrossView.as_view()),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 

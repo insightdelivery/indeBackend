@@ -77,9 +77,6 @@ class GoogleCallbackView(View):
         code = request.GET.get('code')
         error = request.GET.get('error')
         frontend_callback = _frontend_callback_url()
-        msg = 'callback entered code=%s error=%s' % ('yes' if code else 'no', error)
-        print('[GOOGLE_OAUTH]', msg)
-        logger.info('[GOOGLE_OAUTH] %s', msg)
 
         if error:
             logger.warning('Google OAuth error: %s', error)
@@ -106,7 +103,6 @@ class GoogleCallbackView(View):
             redirect_uri = base64.urlsafe_b64decode(state_b64).decode()
         except Exception:
             redirect_uri = request.build_absolute_uri('/auth/google/callback/')
-        logger.info('Google OAuth token exchange redirect_uri=%s', redirect_uri)
 
         token_res = requests.post(
             GOOGLE_TOKEN_URL,
@@ -121,9 +117,6 @@ class GoogleCallbackView(View):
             timeout=10,
         )
         if token_res.status_code != 200:
-            msg = 'OAUTH_FAILED: token exchange status=%s body=%s' % (token_res.status_code, token_res.text[:300])
-            print('[GOOGLE_OAUTH]', msg)
-            logger.info('[GOOGLE_OAUTH] %s', msg)
             logger.warning(
                 'Google token exchange failed: status=%s body=%s redirect_uri=%s',
                 token_res.status_code, token_res.text, redirect_uri,
@@ -133,16 +126,10 @@ class GoogleCallbackView(View):
         try:
             token_data = token_res.json()
         except Exception as e:
-            msg = 'OAUTH_FAILED: token JSON parse %s %s' % (e, (token_res.text or '')[:300])
-            print('[GOOGLE_OAUTH]', msg)
-            logger.info('[GOOGLE_OAUTH] %s', msg)
             logger.warning('Google OAuth: token response JSON parse failed: %s body=%s', e, token_res.text[:500])
             return HttpResponseRedirect(f'{frontend_callback}?error=OAUTH_FAILED')
 
         if token_data.get('error'):
-            msg = 'OAUTH_FAILED: token error=%s' % (token_data.get('error_description') or token_data.get('error'))
-            print('[GOOGLE_OAUTH]', msg)
-            logger.info('[GOOGLE_OAUTH] %s', msg)
             logger.warning(
                 'Google OAuth: token response has error: error=%s description=%s',
                 token_data.get('error'), token_data.get('error_description', ''),
@@ -151,9 +138,6 @@ class GoogleCallbackView(View):
 
         access_token = token_data.get('access_token')
         if not access_token:
-            msg = 'OAUTH_FAILED: no access_token keys=%s' % list(token_data.keys())
-            print('[GOOGLE_OAUTH]', msg)
-            logger.info('[GOOGLE_OAUTH] %s', msg)
             logger.warning('Google OAuth: no access_token in response keys=%s', list(token_data.keys()))
             return HttpResponseRedirect(f'{frontend_callback}?error=OAUTH_FAILED')
 
@@ -163,18 +147,12 @@ class GoogleCallbackView(View):
             timeout=10,
         )
         if user_res.status_code != 200:
-            msg = 'OAUTH_FAILED: userinfo status=%s body=%s' % (user_res.status_code, (user_res.text or '')[:300])
-            print('[GOOGLE_OAUTH]', msg)
-            logger.info('[GOOGLE_OAUTH] %s', msg)
             logger.warning('Google userinfo failed: status=%s body=%s', user_res.status_code, user_res.text)
             return HttpResponseRedirect(f'{frontend_callback}?error=OAUTH_FAILED')
 
         try:
             user_data = user_res.json()
         except Exception as e:
-            msg = 'OAUTH_FAILED: userinfo JSON parse %s %s' % (e, (user_res.text or '')[:300])
-            print('[GOOGLE_OAUTH]', msg)
-            logger.info('[GOOGLE_OAUTH] %s', msg)
             logger.warning('Google OAuth: userinfo JSON parse failed: %s body=%s', e, user_res.text[:500])
             return HttpResponseRedirect(f'{frontend_callback}?error=OAUTH_FAILED')
 
@@ -215,9 +193,6 @@ class GoogleCallbackView(View):
         try:
             tokens = create_public_jwt_tokens(member)
         except Exception as e:
-            msg = 'OAUTH_FAILED: create_public_jwt_tokens %s' % e
-            print('[GOOGLE_OAUTH]', msg)
-            logger.info('[GOOGLE_OAUTH] %s', msg)
             logger.exception('Google OAuth: create_public_jwt_tokens failed: %s', e)
             return HttpResponseRedirect(f'{frontend_callback}?error=OAUTH_FAILED')
 
@@ -241,8 +216,6 @@ class GoogleCallbackView(View):
         if from_signup:
             query_params['from'] = 'signup'
         query = urllib.parse.urlencode(query_params)
-        logger.info('[GOOGLE_OAUTH] success, redirecting to %s', frontend_callback)
-        print('[GOOGLE_OAUTH] success, redirecting to', frontend_callback[:60], '...')
         response = HttpResponseRedirect(f'{frontend_callback}?{query}')
         attach_public_refresh_cookie(response, request, tokens['refresh_token'])
         return response

@@ -103,7 +103,10 @@ class AdminInquiryViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save(status="answered")
-        return Response(AdminInquiryDetailSerializer(instance).data)
+        instance.refresh_from_db()
+        return Response(
+            AdminInquiryDetailSerializer(instance, context={"request": request}).data
+        )
 
     def update(self, request, *args, **kwargs):
         return self.partial_update(request, *args, **kwargs)

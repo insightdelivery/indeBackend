@@ -2,6 +2,8 @@
 관리자 회원 API 뷰
 로그인, 회원가입 등
 """
+import logging
+
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
@@ -17,6 +19,8 @@ from api.adminMember.serializers import AdminRegisterSerializer, AdminLoginSeria
 from api.adminMember.utils import create_admin_member_jwt_tokens
 from sites.admin_api.authentication import AdminJWTAuthentication
 from sites.admin_api.jwt_cookies import attach_admin_refresh_cookie, clear_admin_refresh_cookie
+
+logger = logging.getLogger(__name__)
 
 
 def _admin_member_from_refresh_jwt(refresh_token_str, dt_timezone):
@@ -203,15 +207,9 @@ class AdminLoginView(APIView):
         - user: 사용자 정보
         - refresh_token: JSON에 포함하지 않음 — Set-Cookie(HttpOnly)로만 발급
         """
-        print(f"\n{'='*60}")
-        print(f"[Login Debug] 로그인 API 호출됨")
-        print(f"[Login Debug] 요청 데이터: {request.data}")
-        print(f"{'='*60}")
-        
         serializer = AdminLoginSerializer(data=request.data)
         
         if not serializer.is_valid():
-            print(f"[Login Debug] ❌ 시리얼라이저 검증 실패: {serializer.errors}")
             return Response({
                 'error': '입력값이 올바르지 않습니다.',
                 'details': serializer.errors
@@ -220,91 +218,31 @@ class AdminLoginView(APIView):
         memberShipId = serializer.validated_data['memberShipId']
         password = serializer.validated_data['password']
         
-        print(f"[Login Debug] 시리얼라이저 검증 성공")
-        print(f"[Login Debug] memberShipId: {memberShipId}")
-        print(f"[Login Debug] password 길이: {len(password)}")
-        
         try:
             # 관리자 회원 조회
-            print(f"[Login Debug] 관리자 조회 시작...")
-            print(f"[Login Debug] 조회 조건: memberShipId='{memberShipId}', is_active=True")
-            
             try:
                 admin_member = AdminMemberShip.objects.get(
                     memberShipId=memberShipId,
                     is_active=True
                 )
-                print(f"[Login Debug] ✅ 관리자 조회 성공")
-                print(f"[Login Debug] 조회된 관리자 SID: {admin_member.memberShipSid}")
-                print(f"[Login Debug] 조회된 관리자 이름: {admin_member.memberShipName}")
             except AdminMemberShip.DoesNotExist:
-                print(f"[Login Debug] ❌ 관리자를 찾을 수 없습니다!")
-                print(f"[Login Debug] memberShipId='{memberShipId}'로 조회 시도")
-                
-                # is_active 조건 없이 조회해보기
-                try:
-                    admin_inactive = AdminMemberShip.objects.get(memberShipId=memberShipId)
-                    print(f"[Login Debug] ⚠️  관리자는 존재하지만 is_active={admin_inactive.is_active} (비활성화됨)")
-                except AdminMemberShip.DoesNotExist:
-                    print(f"[Login Debug] ❌ memberShipId='{memberShipId}'로 등록된 관리자가 없습니다")
-                    # 모든 관리자 ID 목록 출력 (디버깅용)
-                    all_admins = AdminMemberShip.objects.all()[:5]
-                    print(f"[Login Debug] 등록된 관리자 목록 (최대 5명):")
-                    for admin in all_admins:
-                        print(f"  - {admin.memberShipId} (활성: {admin.is_active})")
-                
                 return Response({
                     'error': '회원 ID 또는 비밀번호가 올바르지 않습니다.'
                 }, status=status.HTTP_401_UNAUTHORIZED)
             
-            # 비밀번호 확인 (디버깅 정보 출력)
-            print(f"\n{'='*60}")
-            print(f"[Login Debug] 로그인 시도")
-            print(f"{'='*60}")
-            print(f"[Login Debug] memberShipId: {memberShipId}")
-            print(f"[Login Debug] 입력된 비밀번호: '{password}' (길이: {len(password)})")
-            print(f"[Login Debug] 관리자 SID: {admin_member.memberShipSid}")
-            print(f"[Login Debug] 관리자 이름: {admin_member.memberShipName}")
-            print(f"[Login Debug] is_active: {admin_member.is_active}")
-            
             # DB에 저장된 비밀번호 확인
             stored_password = admin_member.memberShipPassword
-            print(f"[Login Debug] DB에 저장된 비밀번호 해시:")
-            print(f"  - None인가: {stored_password is None}")
-            print(f"  - 빈 문자열인가: {stored_password == '' if stored_password else 'N/A'}")
-            print(f"  - 길이: {len(stored_password) if stored_password else 0}")
-            if stored_password:
-                print(f"  - 해시 형식: {stored_password[:80]}...")
-                print(f"  - 전체 해시: {stored_password}")
-            else:
-                print(f"  - ⚠️  비밀번호가 NULL이거나 빈 문자열입니다!")
             
             # 비밀번호가 없거나 빈 문자열인 경우
             if not stored_password or stored_password.strip() == '':
-                print(f"[Login Debug] ❌ 비밀번호가 저장되지 않았습니다!")
                 return Response({
                     'error': '비밀번호가 설정되지 않았습니다. 관리자에게 문의하세요.'
                 }, status=status.HTTP_401_UNAUTHORIZED)
             
             # 비밀번호 확인
-            print(f"[Login Debug] check_password() 호출 중...")
             password_check_result = admin_member.check_password(password)
-            print(f"[Login Debug] check_password() 결과: {password_check_result}")
             
             if not password_check_result:
-                # 추가 디버깅: 직접 check_password 테스트
-                from django.contrib.auth.hashers import check_password as django_check_password
-                direct_check = django_check_password(password, stored_password)
-                print(f"[Login Debug] 직접 django_check_password() 결과: {direct_check}")
-                
-                # 비밀번호를 새로 해시화해서 비교
-                from django.contrib.auth.hashers import make_password
-                new_hash = make_password(password)
-                print(f"[Login Debug] 입력한 비밀번호를 새로 해시화:")
-                print(f"  - 새 해시: {new_hash[:80]}...")
-                print(f"  - 저장된 해시와 동일한가: {stored_password == new_hash}")
-                print(f"  - 새 해시로 검증: {django_check_password(password, new_hash)}")
-                
                 # 로그인 실패 로그 기록
                 AuditLog.objects.create(
                     user_id=str(admin_member.memberShipSid),  # memberShipSid 저장
@@ -370,15 +308,7 @@ class AdminLoginView(APIView):
             return resp
             
         except Exception as e:
-            import traceback
-            error_traceback = traceback.format_exc()
-            print(f"\n{'='*60}")
-            print(f"[Login Debug] ❌ 예외 발생!")
-            print(f"[Login Debug] 오류 타입: {type(e).__name__}")
-            print(f"[Login Debug] 오류 메시지: {str(e)}")
-            print(f"[Login Debug] 전체 트레이스백:")
-            print(error_traceback)
-            print(f"{'='*60}\n")
+            logger.exception('AdminLoginView.post 실패: %s', e)
             
             return Response({
                 'error': f'로그인 처리 중 오류가 발생했습니다: {str(e)}',

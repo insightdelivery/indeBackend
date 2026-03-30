@@ -50,9 +50,6 @@ class S3Storage:
         if not self.bucket_name:
             raise ValueError("AWS_STORAGE_BUCKET_NAME이 설정되어야 합니다.")
         
-        # 버킷 정보 로깅 (프로덕션 디버깅용)
-        logger.info(f"S3 Storage 초기화 완료 - 버킷: {self.bucket_name}, 리전: {self.aws_region}")
-        
         # S3 클라이언트 생성 (Config를 사용하여 리전과 서명 버전 명시)
         from botocore.config import Config
         config = Config(
@@ -84,7 +81,6 @@ class S3Storage:
             # Django settings에서 먼저 확인
             explicit_bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None) or os.getenv('AWS_STORAGE_BUCKET_NAME')
             if explicit_bucket:
-                logger.info(f"명시적 버킷 이름 사용: {explicit_bucket}")
                 return explicit_bucket
             
             # DEBUG 모드에 따라 버킷 구분
@@ -95,20 +91,16 @@ class S3Storage:
                 not settings_debug
             )
             
-            logger.info(f"환경 판단 - DJANGO_DEBUG: {django_debug}, settings.DEBUG: {settings_debug}, is_production: {is_production}")
-            
             if is_production:
                 bucket_name = (
                     getattr(settings, 'AWS_STORAGE_BUCKET_NAME_PRODUCTION', None) or 
                     os.getenv('AWS_STORAGE_BUCKET_NAME_PRODUCTION', 'inde-production')
                 )
-                logger.info(f"프로덕션 버킷 선택: {bucket_name}")
             else:
                 bucket_name = (
                     getattr(settings, 'AWS_STORAGE_BUCKET_NAME_DEVELOPMENT', None) or 
                     os.getenv('AWS_STORAGE_BUCKET_NAME_DEVELOPMENT', 'inde-develope')
                 )
-                logger.info(f"개발 버킷 선택: {bucket_name}")
             
             return bucket_name
         except Exception as e:
@@ -198,8 +190,6 @@ class S3Storage:
             # 파일을 처음으로 되돌림 (이미 읽힌 경우 대비)
             file_obj.seek(0)
             
-            logger.info(f"S3 업로드 시도 - 버킷: {self.bucket_name}, 키: {key}, 크기: {file_obj.getvalue().__len__() if hasattr(file_obj, 'getvalue') else 'unknown'} bytes")
-            
             self.s3_client.upload_fileobj(
                 file_obj,
                 self.bucket_name,
@@ -208,7 +198,6 @@ class S3Storage:
             )
             
             url = self._get_s3_url(key)
-            logger.info(f"파일 업로드 성공: {key} -> {url}")
             return url
             
         except NoCredentialsError:
@@ -264,7 +253,6 @@ class S3Storage:
         """
         try:
             self.s3_client.download_file(self.bucket_name, key, local_path)
-            logger.info(f"파일 다운로드 성공: {key} -> {local_path}")
             return True
         except ClientError as e:
             logger.error(f"S3 다운로드 실패: {e}")
@@ -290,7 +278,6 @@ class S3Storage:
                     Params={'Bucket': self.bucket_name, 'Key': key},
                     ExpiresIn=expires_in
                 )
-                logger.debug(f"Presigned URL 생성 (force_presigned=True): {key} -> {url[:100]}...")
                 return url
             
             # force_presigned가 False인 경우에도 보안을 위해 Presigned URL 생성
@@ -300,7 +287,6 @@ class S3Storage:
                 Params={'Bucket': self.bucket_name, 'Key': key},
                 ExpiresIn=expires_in
             )
-            logger.debug(f"Presigned URL 생성: {key} -> {url[:100]}...")
             return url
         except Exception as e:
             logger.error(f"파일 URL 생성 실패: {key} - {e}")
@@ -320,7 +306,6 @@ class S3Storage:
         """
         try:
             self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
-            logger.info(f"파일 삭제 성공: {key}")
             return True
         except ClientError as e:
             logger.error(f"S3 삭제 실패: {e}")

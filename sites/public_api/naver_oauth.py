@@ -74,7 +74,6 @@ class NaverCallbackView(View):
         code = request.GET.get('code')
         error = request.GET.get('error')
         frontend_callback = _frontend_callback_url()
-        logger.info('[NAVER_OAUTH] callback entered code=%s error=%s', 'yes' if code else 'no', error)
 
         if error:
             logger.warning('Naver OAuth error: %s', error)
@@ -100,7 +99,6 @@ class NaverCallbackView(View):
             redirect_uri = base64.urlsafe_b64decode(state_b64).decode()
         except Exception:
             redirect_uri = request.build_absolute_uri('/auth/naver/callback/')
-        logger.info('Naver OAuth token exchange redirect_uri=%s', redirect_uri)
 
         token_res = requests.get(
             NAVER_TOKEN_URL,
@@ -222,7 +220,6 @@ class NaverCallbackView(View):
         if from_signup:
             query_params['from'] = 'signup'
         query = urllib.parse.urlencode(query_params)
-        logger.info('[NAVER_OAUTH] success, redirecting to %s', frontend_callback)
         response = HttpResponseRedirect(f'{frontend_callback}?{query}')
         attach_public_refresh_cookie(response, request, tokens['refresh_token'])
         return response

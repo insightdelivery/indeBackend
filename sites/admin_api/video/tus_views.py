@@ -57,25 +57,12 @@ class TUSUploadView(View):
         if request.method == 'OPTIONS':
             return self.options(request, *args, **kwargs)
         
-        # Authorization 헤더 확인 (모든 가능한 헤더 이름 확인)
-        auth_header = (
-            request.META.get('HTTP_AUTHORIZATION', '') or
-            request.META.get('Authorization', '') or
-            (request.headers.get('Authorization', '') if hasattr(request, 'headers') else '')
-        )
-        
-        # 요청 헤더 전체 로깅 (디버깅용)
-        logger.info(f"[TUS] {request.method} 요청 - URL: {request.path}")
-        logger.info(f"[TUS] Authorization 헤더: {auth_header[:50] if auth_header else '없음'}...")
-        logger.debug(f"[TUS] 모든 HTTP_* 헤더: {[k for k in request.META.keys() if k.startswith('HTTP_')]}")
-        
         # AdminJWTAuthentication 적용
         auth = AdminJWTAuthentication()
         try:
             result = auth.authenticate(request)
             if result is None:
                 logger.warning(f"[TUS] 인증 실패: Authorization 헤더가 없거나 형식이 올바르지 않습니다.")
-                logger.debug(f"[TUS] 요청 META 키: {list(request.META.keys())[:20]}")
                 response = HttpResponse('Unauthorized: Missing or invalid Authorization header', status=401)
                 self._add_cors_headers(response, request)
                 return response
@@ -88,7 +75,6 @@ class TUSUploadView(View):
                 return response
             
             request.user = user
-            logger.info(f"[TUS] 인증 성공: user={user}")
         except Exception as e:
             logger.error(f"[TUS] 인증 실패: {e}", exc_info=True)
             response = HttpResponse(f'Unauthorized: {str(e)}', status=401)
@@ -344,8 +330,6 @@ class TUSUploadView(View):
             response['Upload-Offset'] = str(new_offset)
             response['Upload-Length'] = str(metadata_data['upload_length'])
             response['Tus-Resumable'] = '1.0.0'
-            
-            logger.debug(f"[TUS] 청크 업로드: upload_id={upload_id}, offset={new_offset}/{metadata_data['upload_length']}")
             
             return response
             

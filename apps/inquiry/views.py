@@ -1,4 +1,4 @@
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.pagination import PageNumberPagination
@@ -21,9 +21,9 @@ class InquiryPagination(PageNumberPagination):
 
 class InquiryViewSet(viewsets.ModelViewSet):
     """
-    1:1 문의 ViewSet.
+    1:1 문의 ViewSet (www).
     - 작성: 로그인 회원만 (IsAuthenticated)
-    - 목록/상세: 본인 문의만 조회 (관리자는 전체)
+    - 목록/상세: 본인 문의만 (is_staff 여부와 무관; 전체·답변은 admin_api)
     - 답변 수정: 관리자만 (IsAdminUser), answer 저장 시 status='answered' 자동 변경
     """
     authentication_classes = [BoardJWTAuthentication]
@@ -35,8 +35,6 @@ class InquiryViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not getattr(user, "member", None):
             return Inquiry.objects.none()
-        if getattr(user, "is_staff", False):
-            return Inquiry.objects.all()
         return Inquiry.objects.filter(user_id=user.member.member_sid)
 
     def get_serializer_class(self):
@@ -61,13 +59,25 @@ class InquiryViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user.member)
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        instance = serializer.instance
+        detail = InquiryDetailSerializer(instance, context={"request": request})
+        headers = self.get_success_headers(detail.data)
+        return Response(detail.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def partial_update(self, request, *args, **kwargs):
         kwargs["partial"] = True
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save(status="answered")
-        return Response(InquiryDetailSerializer(instance).data)
+        instance.refresh_from_db()
+        return Response(
+            InquiryDetailSerializer(instance, context={"request": request}).data
+        )
 
     def update(self, request, *args, **kwargs):
         return self.partial_update(request, *args, **kwargs)

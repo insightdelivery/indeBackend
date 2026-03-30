@@ -12,8 +12,16 @@ class Inquiry(models.Model):
         on_delete=models.CASCADE,
         related_name="inquiries",
     )
+    # sysCode 하위 코드 sid (부모 예: SYS26330B001)
+    inquiry_type = models.CharField(max_length=64, default="", blank=True)
     title = models.CharField(max_length=255)
     content = models.TextField()
+    attachment = models.FileField(
+        upload_to="inquiry_attachments/%Y/%m/",
+        blank=True,
+        null=True,
+        max_length=512,
+    )
     answer = models.TextField(blank=True, null=True)
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="waiting"

@@ -675,6 +675,23 @@ class TokenRefreshView(APIView):
 
     def post(self, request):
         data = request.data if isinstance(request.data, dict) else {}
+        cookie_name = getattr(settings, 'PUBLIC_JWT_REFRESH_COOKIE_NAME', 'refreshToken')
+        raw_cookie_header = request.META.get('HTTP_COOKIE', '') or ''
+
+        # tokenrefresh 400(빈 refresh) 원인 확인용 — 운영에서는 LOG 레벨·PUBLIC_JWT_TOKENREFRESH_VERBOSE_LOG 로 조절
+        logger.warning(
+            '[tokenrefresh] 진입 Origin=%s Referer=%s 기대쿠키명=%s COOKIES_파싱키=%s',
+            request.META.get('HTTP_ORIGIN', ''),
+            request.META.get('HTTP_REFERER', ''),
+            cookie_name,
+            list(request.COOKIES.keys()),
+        )
+        logger.warning(
+            '[tokenrefresh] Raw Cookie 헤더 길이=%s 앞400자=%r',
+            len(raw_cookie_header),
+            raw_cookie_header[:400],
+        )
+
         refresh_from_body = (data.get('refresh_token') or '').strip()
         refresh_token = refresh_from_body
         refresh_source = 'body' if refresh_token else None
@@ -683,21 +700,37 @@ class TokenRefreshView(APIView):
             refresh_token = (refresh_token or '').strip()
             if refresh_token:
                 refresh_source = 'cookie'
-        debug_tokens = getattr(settings, 'PUBLIC_JWT_DEBUG_LOG_TOKENS', settings.DEBUG)
-        if debug_tokens:
-            cookie_header = request.META.get('HTTP_COOKIE', '') or ''
-            cookie_name = getattr(settings, 'PUBLIC_JWT_REFRESH_COOKIE_NAME', 'refreshToken')
-            has_refresh_cookie_name = cookie_name in cookie_header
+
+        verbose = getattr(settings, 'PUBLIC_JWT_TOKENREFRESH_VERBOSE_LOG', settings.DEBUG)
+        if verbose and refresh_token:
             logger.warning(
-                '[JWT_DEBUG][tokenrefresh] 수신 source=%s refresh_len=%s cookie_name=%s Cookie헤더에_이름포함=%s',
+                '[tokenrefresh] 수신 source=%s refresh_token 전체=%s',
+                refresh_source,
+                refresh_token,
+            )
+
+        debug_tokens = getattr(settings, 'PUBLIC_JWT_DEBUG_LOG_TOKENS', settings.DEBUG)
+        if debug_tokens and not verbose:
+            # 기존 JWT_DEBUG와 중복 방지: verbose가 켜져 있으면 위 로그만
+            logger.warning(
+                '[JWT_DEBUG][tokenrefresh] source=%s refresh_len=%s cookie_name=%s 이름이_Raw헤더에=%s',
                 refresh_source or '없음',
                 len(refresh_token) if refresh_token else 0,
                 cookie_name,
-                has_refresh_cookie_name,
+                cookie_name in raw_cookie_header,
             )
             if refresh_token:
                 logger.warning('[JWT_DEBUG][tokenrefresh] refresh_token=%s', refresh_token)
+
         if not refresh_token:
+            logger.warning(
+                '[tokenrefresh] refresh 없음 → HTTP 400. body_keys=%s body_refresh_token_len=%s '
+                '쿠키_%s_존재=%s',
+                list(data.keys()),
+                len(refresh_from_body),
+                cookie_name,
+                cookie_name in request.COOKIES,
+            )
             return Response(
                 {
                     'error': 'refresh_token이 필요합니다. (HttpOnly 쿠키 또는 Body)',

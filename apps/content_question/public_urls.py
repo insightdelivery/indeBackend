@@ -6,6 +6,16 @@ from . import public_views
 
 urlpatterns = [
     path(
+        'my-answered-contents',
+        public_views.ContentMyAnsweredContentsListView.as_view(),
+        name='content_my_answered_contents',
+    ),
+    path(
+        'my-answered-contents/',
+        public_views.ContentMyAnsweredContentsListView.as_view(),
+        name='content_my_answered_contents_slash',
+    ),
+    path(
         '<str:content_type>/<int:content_id>/questions',
         public_views.ContentQuestionListView.as_view(),
         name='content_questions',
