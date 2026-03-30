@@ -146,8 +146,10 @@ class SysCodeManager(models.Model):
     sysCodeParentsSid = models.CharField(max_length=12, default='')
     sysCodeName = models.CharField(max_length=255, default='')
     sysCodeValName = models.CharField(max_length=255, null=True, blank=True)
+    # 디렉터 기본 권한 템플릿(Y/N) — 초기 user_permissions 생성용만, 판단 금지
     sysCodeVal = models.CharField(max_length=255, null=True, blank=True)
     sysCodeVal1Name = models.CharField(max_length=255, null=True, blank=True)
+    # 에디터 기본 권한 템플릿(Y/N) — 초기 user_permissions 생성용만, 판단 금지
     sysCodeVal1 = models.CharField(max_length=255, null=True, blank=True)
     sysCodeVal2Name = models.CharField(max_length=255, null=True, blank=True)
     sysCodeVal2 = models.CharField(max_length=255, null=True, blank=True)

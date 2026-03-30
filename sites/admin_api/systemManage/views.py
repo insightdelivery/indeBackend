@@ -8,6 +8,8 @@ from django.utils import timezone
 
 from core.models import SysCodeManager
 from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.menu_codes import MenuCodes
+from sites.admin_api.permissions import MenuPermission
 from .serializers import (
     SysCodeManagerSerializer, 
     SysCodeManagerCreateSerializer,
@@ -20,7 +22,8 @@ class SysCodeManagerViewSet(viewsets.ModelViewSet):
     """SysCodeManager CRUD 뷰셋"""
     queryset = SysCodeManager.objects.all()
     serializer_class = SysCodeManagerSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.CODE_MANAGE
     authentication_classes = [AdminJWTAuthentication]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['sysCodeUse', 'sysCodeParentsSid']

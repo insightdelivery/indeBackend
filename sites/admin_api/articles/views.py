@@ -30,6 +30,8 @@ from sites.admin_api.articles.utils import (
     normalize_empty_p_tags,
 )
 from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.menu_codes import MenuCodes
+from sites.admin_api.permissions import MenuPermission
 from core.utils import create_success_response, create_error_response, create_api_response
 from core.s3_storage import S3Storage, get_s3_storage
 
@@ -53,7 +55,8 @@ class ArticleListView(APIView):
     GET /article/list
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ARTICLE
     
     def get(self, request):
         """
@@ -177,7 +180,8 @@ class ArticleDetailView(APIView):
     DELETE /article/{id} - 삭제
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ARTICLE
     
     def get(self, request, id):
         """
@@ -430,7 +434,8 @@ class ArticleCreateView(APIView):
     POST /article/create
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ARTICLE
     
     def post(self, request):
         """
@@ -570,7 +575,8 @@ class ArticleUpdateView(APIView):
     PUT /article/{id}
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ARTICLE
     
     def put(self, request, id):
         """
@@ -618,7 +624,8 @@ class ArticleDeleteView(APIView):
     DELETE /article/{id}
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ARTICLE
     
     def delete(self, request, id):
         """
@@ -662,7 +669,8 @@ class ArticleBatchDeleteView(APIView):
     DELETE /article/batch-delete
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ARTICLE
     
     def delete(self, request):
         """
@@ -717,7 +725,8 @@ class ArticleBatchStatusView(APIView):
     PUT /article/batch-status
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ARTICLE
     
     def put(self, request):
         """
@@ -767,7 +776,8 @@ class ArticleRestoreView(APIView):
     POST /article/{id}/restore
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ARTICLE
     
     def post(self, request, id):
         """
@@ -811,7 +821,8 @@ class ArticleHardDeleteView(APIView):
     DELETE /article/{id}/hard-delete
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ARTICLE
     
     def delete(self, request, id):
         """
@@ -849,7 +860,8 @@ class ArticleExportView(APIView):
     GET /article/export
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ARTICLE
     
     def get(self, request):
         """

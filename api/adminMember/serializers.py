@@ -13,7 +13,13 @@ class AdminRegisterSerializer(serializers.Serializer):
     memberShipName = serializers.CharField(required=True, max_length=100, help_text='이름')
     memberShipEmail = serializers.EmailField(required=True, help_text='이메일 주소')
     memberShipPhone = serializers.CharField(required=False, allow_blank=True, max_length=20, help_text='전화번호')
-    memberShipLevel = serializers.IntegerField(required=False, default=1, help_text='회원 레벨 (기본값: 1)')
+    memberShipLevel = serializers.IntegerField(required=False, default=2, help_text='회원 레벨 (1=슈퍼관리자, 기본 2)')
+    adminRole = serializers.ChoiceField(
+        required=False,
+        choices=['director', 'editor'],
+        default='editor',
+        help_text='초기 메뉴 권한 템플릿 (director | editor)',
+    )
     is_admin = serializers.BooleanField(required=False, default=False, help_text='관리자 여부')
     
     def validate(self, data):

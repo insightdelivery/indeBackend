@@ -24,6 +24,8 @@ from sites.admin_api.video.utils import (
     get_presigned_thumbnail_url,
 )
 from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.menu_codes import VIDEO_SEMINAR_CODES
+from sites.admin_api.permissions import MenuPermission
 from core.utils import create_success_response, create_error_response
 from core.s3_storage import S3Storage, get_s3_storage
 from core.cloudflare_stream import get_cloudflare_stream
@@ -46,7 +48,8 @@ class VideoListView(APIView):
     GET /video/list
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = VIDEO_SEMINAR_CODES
     
     def get(self, request):
         """
@@ -207,7 +210,8 @@ class VideoDetailView(APIView):
     DELETE /video/{id} - 삭제
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = VIDEO_SEMINAR_CODES
     
     def get(self, request, id):
         """
@@ -426,7 +430,8 @@ class VideoCreateView(APIView):
     POST /video/create
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = VIDEO_SEMINAR_CODES
     
     def post(self, request):
         """
@@ -499,7 +504,8 @@ class VideoBatchDeleteView(APIView):
     DELETE /video/batch-delete
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = VIDEO_SEMINAR_CODES
     
     def delete(self, request):
         """
@@ -553,7 +559,8 @@ class VideoBatchStatusView(APIView):
     PUT /video/batch-status
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = VIDEO_SEMINAR_CODES
     
     def put(self, request):
         """
@@ -608,7 +615,8 @@ class VideoRestoreView(APIView):
     POST /video/{id}/restore
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = VIDEO_SEMINAR_CODES
     
     def post(self, request, id):
         """
@@ -642,7 +650,8 @@ class VideoHardDeleteView(APIView):
     DELETE /video/{id}/hard-delete
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = VIDEO_SEMINAR_CODES
     
     def delete(self, request, id):
         """
@@ -690,7 +699,8 @@ class VideoUploadView(APIView):
     POST /video/upload
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = VIDEO_SEMINAR_CODES
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     
     def post(self, request):
@@ -808,7 +818,8 @@ class VideoStreamInfoView(APIView):
     GET /video/stream/{videoStreamId}/info
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = VIDEO_SEMINAR_CODES
     
     def get(self, request, videoStreamId):
         """
@@ -853,7 +864,8 @@ class CloudflareTUSCreateView(APIView):
     브라우저가 Cloudflare로 직접 TUS 업로드할 수 있도록 세션을 생성합니다.
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = VIDEO_SEMINAR_CODES
     parser_classes = [JSONParser]
     
     def post(self, request):
@@ -946,7 +958,8 @@ class CloudflareTUSCompleteView(APIView):
     서버는 파일을 업로드하지 않고, 완료 알림만 처리합니다.
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = VIDEO_SEMINAR_CODES
     parser_classes = [JSONParser]
     
     def post(self, request):

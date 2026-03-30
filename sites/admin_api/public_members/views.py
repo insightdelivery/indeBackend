@@ -11,6 +11,8 @@ from django.utils import timezone
 
 from core.models import AuditLog
 from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.menu_codes import MenuCodes
+from sites.admin_api.permissions import MenuPermission
 from sites.public_api.models import PublicMemberShip
 from .serializers import (
     PublicMemberListSerializer,
@@ -28,7 +30,8 @@ class PublicMemberPagination(PageNumberPagination):
 class AdminPublicMemberViewSet(viewsets.ModelViewSet):
     """관리자 공개 회원(PublicMemberShip) CRUD + 탈퇴/복구"""
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.PUBLIC_MEMBERS
     queryset = PublicMemberShip.objects.all()
     pagination_class = PublicMemberPagination
     filter_backends = [SearchFilter, OrderingFilter]

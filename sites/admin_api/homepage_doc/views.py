@@ -7,6 +7,8 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 
 from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.menu_codes import MenuCodes
+from sites.admin_api.permissions import MenuPermission
 from core.utils import create_success_response, create_error_response
 
 from .constants import HOMEPAGE_DOC_TYPES, HOMEPAGE_DOC_TYPES_ORDERED
@@ -40,7 +42,8 @@ class AdminHomepageDocListView(APIView):
     """GET /homepage-doc-info/ — 7건"""
 
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.HOMEPAGE_DOC
 
     def get(self, request):
         try:
@@ -62,7 +65,8 @@ class AdminHomepageDocDetailView(APIView):
     """GET/PUT /homepage-doc-info/{doc_type}/"""
 
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.HOMEPAGE_DOC
 
     def get(self, request, doc_type):
         if doc_type not in HOMEPAGE_DOC_TYPES:

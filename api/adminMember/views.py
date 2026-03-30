@@ -16,9 +16,12 @@ from datetime import datetime
 from api.models import AdminMemberShip
 from core.models import AuditLog
 from api.adminMember.serializers import AdminRegisterSerializer, AdminLoginSerializer, AdminUpdateSerializer
+from api.services.admin_permissions import build_admin_user_payload
 from api.adminMember.utils import create_admin_member_jwt_tokens
 from sites.admin_api.authentication import AdminJWTAuthentication
 from sites.admin_api.jwt_cookies import attach_admin_refresh_cookie, clear_admin_refresh_cookie
+from sites.admin_api.menu_codes import MenuCodes
+from sites.admin_api.permissions import MenuPermission
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +79,8 @@ class AdminRegisterView(APIView):
     토큰 인증이 필요합니다.
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ADMIN_REGISTER
     
     def post(self, request):
         """
@@ -128,7 +132,8 @@ class AdminRegisterView(APIView):
                 memberShipName=serializer.validated_data['memberShipName'],
                 memberShipEmail=serializer.validated_data['memberShipEmail'],
                 memberShipPhone=serializer.validated_data.get('memberShipPhone', ''),
-                memberShipLevel=serializer.validated_data.get('memberShipLevel', 1),
+                memberShipLevel=serializer.validated_data.get('memberShipLevel', 2),
+                admin_role=serializer.validated_data.get('adminRole', 'editor'),
                 is_admin=serializer.validated_data.get('is_admin', False),
                 is_active=True,
                 memberShipPassword=make_password(serializer.validated_data['password']),  # 비밀번호 해시화
@@ -136,6 +141,9 @@ class AdminRegisterView(APIView):
             
             # 저장 (memberShipSid가 자동 생성됨)
             admin_member.save()
+            from api.services.admin_permissions import assign_default_permissions
+
+            assign_default_permissions(admin_member)
             
             # 회원 가입 로그 기록 (등록한 관리자 정보 기록)
             AuditLog.objects.create(
@@ -165,6 +173,7 @@ class AdminRegisterView(APIView):
                     'memberShipEmail': admin_member.memberShipEmail,
                     'memberShipPhone': admin_member.memberShipPhone,
                     'memberShipLevel': admin_member.memberShipLevel,
+                    'admin_role': admin_member.admin_role,
                     'is_admin': admin_member.is_admin,
                     'is_active': admin_member.is_active,
                 }
@@ -289,20 +298,15 @@ class AdminLoginView(APIView):
             )
             
             # 성공 응답 (refresh 는 HttpOnly 쿠키만 — JSON 미포함)
+            user_payload = build_admin_user_payload(admin_member)
+            user_payload['last_login'] = (
+                admin_member.last_login.strftime('%Y-%m-%d %H:%M:%S') if admin_member.last_login else None
+            )
+            user_payload['login_count'] = admin_member.login_count
             resp = Response({
                 'access_token': tokens['access_token'],
                 'expires_in': tokens['expires_in'],
-                'user': {
-                    'memberShipSid': str(admin_member.memberShipSid),
-                    'memberShipId': admin_member.memberShipId,
-                    'memberShipName': admin_member.memberShipName,
-                    'memberShipEmail': admin_member.memberShipEmail,
-                    'memberShipPhone': admin_member.memberShipPhone,
-                    'memberShipLevel': admin_member.memberShipLevel,
-                    'is_admin': admin_member.is_admin,
-                    'last_login': admin_member.last_login.strftime('%Y-%m-%d %H:%M:%S') if admin_member.last_login else None,
-                    'login_count': admin_member.login_count,
-                }
+                'user': user_payload,
             }, status=status.HTTP_200_OK)
             attach_admin_refresh_cookie(resp, request, tokens['refresh_token'])
             return resp
@@ -412,15 +416,7 @@ class TokenRefreshView(APIView):
                 {
                     'access_token': tokens['access_token'],
                     'expires_in': tokens['expires_in'],
-                    'user': {
-                        'memberShipSid': str(user.memberShipSid),
-                        'memberShipId': user.memberShipId,
-                        'memberShipName': user.memberShipName,
-                        'memberShipEmail': user.memberShipEmail,
-                        'memberShipPhone': user.memberShipPhone,
-                        'memberShipLevel': user.memberShipLevel,
-                        'is_admin': user.is_admin,
-                    },
+                    'user': build_admin_user_payload(user),
                 },
                 status=status.HTTP_200_OK,
             )
@@ -516,7 +512,8 @@ class AdminListView(APIView):
     액세스 토큰이 유효한 관리자만 조회 가능
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ADMIN_REGISTER
     
     def get(self, request):
         """
@@ -632,7 +629,8 @@ class AdminUpdateView(APIView):
     토큰 인증이 필요합니다.
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ADMIN_REGISTER
     
     def put(self, request, memberShipSid=None):
         """
@@ -773,7 +771,8 @@ class AdminDeleteView(APIView):
     토큰 인증이 필요합니다.
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.ADMIN_REGISTER
     
     def delete(self, request, memberShipSid=None):
         """

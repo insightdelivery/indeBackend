@@ -10,6 +10,8 @@ from django.core.files.uploadedfile import InMemoryUploadedFile
 from core.s3_storage import get_s3_storage
 from core.utils import create_success_response, create_error_response
 from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.menu_codes import MenuCodes
+from sites.admin_api.permissions import MenuPermission
 from rest_framework.permissions import IsAuthenticated
 import os
 import uuid
@@ -30,7 +32,8 @@ class FileUploadView(APIView):
     POST /admin-api/files/upload/
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.FILES_COMMON
     parser_classes = [MultiPartParser, FormParser]
     
     def post(self, request):
@@ -163,7 +166,8 @@ class FileDeleteView(APIView):
     DELETE /admin-api/files/delete/
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.FILES_COMMON
     
     def delete(self, request):
         """
@@ -231,7 +235,8 @@ class FileInfoView(APIView):
     GET /admin-api/files/info/
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.FILES_COMMON
     
     def get(self, request):
         """
@@ -318,7 +323,8 @@ class FileListView(APIView):
     GET /admin-api/files/list/
     """
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.FILES_COMMON
     
     def get(self, request):
         """

@@ -1,0 +1,33 @@
+"""
+관리자 메뉴 코드 (menu_code) — adminUserPermissionsPlan.md
+코드 값은 DB sysCode와 동일하게 유지한다.
+"""
+from __future__ import annotations
+
+# 루트 (트리 기준)
+ADMIN_MENU_ROOT = "SYS26330B006"
+
+
+class MenuCodes:
+    DASHBOARD = "SYS26330B007"
+    ARTICLE = "SYS26330B008"
+    VIDEO = "SYS26330B009"
+    SEMINAR = "SYS26330B010"
+    BOARD_PARENT = "SYS26330B016"
+    NOTICE = "SYS26330B018"
+    FAQ = "SYS26330B019"
+    INQUIRY = "SYS26330B020"
+    SETTINGS_PARENT = "SYS26330B017"
+    CODE_MANAGE = "SYS26330B021"
+    MENU_PERMISSION = "SYS26330B022"
+    ADMIN_REGISTER = "SYS26330B023"
+    # 프론트 확장 메뉴 — sysCode 시드 필요
+    CONTENT_AUTHOR = "SYS26330B024"
+    DISPLAY_EVENTS = "SYS26330B025"
+    HOMEPAGE_DOC = "SYS26330B026"
+    PUBLIC_MEMBERS = "SYS26330B027"
+    FILES_COMMON = "SYS26330B029"
+
+
+# 비디오/세미나가 동일 API를 쓰므로 OR 판단용
+VIDEO_SEMINAR_CODES = (MenuCodes.VIDEO, MenuCodes.SEMINAR)

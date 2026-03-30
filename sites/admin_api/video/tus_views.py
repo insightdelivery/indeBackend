@@ -15,6 +15,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.conf import settings
 from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.menu_codes import VIDEO_SEMINAR_CODES
+from sites.admin_api.permissions import check_any_menu_permission, http_method_to_action
 from core.cloudflare_stream import get_cloudflare_stream
 from core.utils import create_success_response, create_error_response
 import logging
@@ -75,6 +77,17 @@ class TUSUploadView(View):
                 return response
             
             request.user = user
+            action = http_method_to_action(request.method)
+            if not check_any_menu_permission(user, VIDEO_SEMINAR_CODES, action):
+                logger.warning(
+                    "Permission denied: user=%s, menu=%s, action=%s",
+                    getattr(user, "memberShipSid", None),
+                    ",".join(VIDEO_SEMINAR_CODES),
+                    action,
+                )
+                response = HttpResponse("Forbidden", status=403)
+                self._add_cors_headers(response, request)
+                return response
         except Exception as e:
             logger.error(f"[TUS] 인증 실패: {e}", exc_info=True)
             response = HttpResponse(f'Unauthorized: {str(e)}', status=401)
@@ -358,6 +371,15 @@ class TUSCompleteView(View):
             if not user:
                 return JsonResponse(create_error_response('Unauthorized', '01'), status=401)
             request.user = user
+            action = http_method_to_action(request.method)
+            if not check_any_menu_permission(user, VIDEO_SEMINAR_CODES, action):
+                logger.warning(
+                    "Permission denied: user=%s, menu=%s, action=%s",
+                    getattr(user, "memberShipSid", None),
+                    ",".join(VIDEO_SEMINAR_CODES),
+                    action,
+                )
+                return JsonResponse(create_error_response("Forbidden", "03"), status=403)
         except Exception as e:
             logger.error(f"TUS Complete 인증 실패: {e}")
             return JsonResponse(create_error_response('Unauthorized', '01'), status=401)

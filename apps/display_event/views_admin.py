@@ -8,6 +8,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.menu_codes import MenuCodes
+from sites.admin_api.permissions import MenuPermission
 
 from .models import DisplayEvent
 from .serializers import DisplayEventWriteSerializer
@@ -22,7 +24,8 @@ class AdminDisplayEventPagination(PageNumberPagination):
 
 class AdminDisplayEventViewSet(viewsets.ModelViewSet):
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.DISPLAY_EVENTS
     queryset = DisplayEvent.objects.all()
     serializer_class = DisplayEventWriteSerializer
     pagination_class = AdminDisplayEventPagination

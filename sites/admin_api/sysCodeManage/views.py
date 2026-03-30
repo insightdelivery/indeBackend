@@ -6,6 +6,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
+from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.menu_codes import MenuCodes
+from sites.admin_api.permissions import MenuPermission
 from sites.admin_api.sysCodeManage.models import SystemCode
 from sites.admin_api.sysCodeManage.serializers import (
     SystemCodeSerializer,
@@ -19,7 +22,9 @@ class SystemCodeTreeView(APIView):
     시스템 코드 트리 조회 API
     GET /sysCodeManage/syscode/code_tree/
     """
-    permission_classes = [IsAuthenticated]
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.CODE_MANAGE
     
     def get(self, request):
         """
@@ -52,7 +57,9 @@ class SystemCodeListView(APIView):
     GET /sysCodeManage/syscode/ - 목록 조회
     POST /sysCodeManage/syscode/ - 코드 생성
     """
-    permission_classes = [IsAuthenticated]
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.CODE_MANAGE
     
     def get(self, request):
         """

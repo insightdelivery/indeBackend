@@ -36,8 +36,15 @@ class AdminMemberShip(models.Model):
     memberShipEmail = models.EmailField(unique=True, verbose_name='이메일')
     memberShipPhone = models.CharField(max_length=20, blank=True, null=True, verbose_name='전화번호')
     
-    # 권한 및 레벨
-    memberShipLevel = models.IntegerField(default=1, verbose_name='회원 레벨')
+    # 권한 및 레벨 (§18.3 Super Admin: memberShipLevel == 1)
+    memberShipLevel = models.IntegerField(default=2, verbose_name='회원 레벨')
+    admin_role = models.CharField(
+        max_length=20,
+        blank=True,
+        default='editor',
+        verbose_name='관리자 역할',
+        help_text='director | editor — 초기 user_permissions 템플릿용',
+    )
     is_admin = models.BooleanField(default=False, verbose_name='관리자 여부')
     is_active = models.BooleanField(default=True, verbose_name='활성화')
     
@@ -86,3 +93,35 @@ class AdminMemberShip(models.Model):
     def is_anonymous(self):
         """익명 사용자 여부"""
         return False
+
+
+class UserPermission(models.Model):
+    """
+    관리자 메뉴 권한 (adminUserPermissionsPlan.md §4)
+    판단은 이 테이블만 사용한다.
+    """
+
+    user = models.ForeignKey(
+        AdminMemberShip,
+        on_delete=models.CASCADE,
+        related_name='menu_permissions',
+        db_column='user_id',
+    )
+    menu_code = models.CharField(max_length=20)
+    can_read = models.BooleanField(default=True)
+    can_write = models.BooleanField(default=False)
+    can_delete = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'user_permissions'
+        verbose_name = '관리자 메뉴 권한'
+        verbose_name_plural = '관리자 메뉴 권한'
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'menu_code'], name='uniq_user_menu_code'),
+        ]
+        indexes = [
+            models.Index(fields=['user', 'menu_code'], name='user_perm_user_menu_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} {self.menu_code}'

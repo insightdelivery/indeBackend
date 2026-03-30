@@ -12,6 +12,8 @@ from rest_framework.permissions import IsAuthenticated
 
 from core.utils import create_success_response, create_error_response
 from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.menu_codes import MenuCodes
+from sites.admin_api.permissions import MenuPermission
 from .models import ContentQuestion, ContentQuestionAnswer
 from .serializers import (
     ContentQuestionListSerializer,
@@ -20,10 +22,28 @@ from .serializers import (
 )
 
 
+def _menu_code_for_content_type(content_type: str) -> str:
+    ct = (content_type or "").upper()
+    if ct == "ARTICLE":
+        return MenuCodes.ARTICLE
+    if ct == "VIDEO":
+        return MenuCodes.VIDEO
+    if ct == "SEMINAR":
+        return MenuCodes.SEMINAR
+    return MenuCodes.ARTICLE
+
+
 class AdminContentQuestionListView(APIView):
     """GET 목록, POST 등록"""
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+
+    def get_menu_code(self, request):
+        if request.method == "GET":
+            return _menu_code_for_content_type(request.query_params.get("content_type"))
+        return _menu_code_for_content_type(
+            (request.data or {}).get("content_type") if hasattr(request, "data") else None
+        )
 
     def get(self, request):
         content_type = request.query_params.get('content_type')
@@ -78,7 +98,15 @@ class AdminContentQuestionListView(APIView):
 class AdminContentQuestionDetailView(APIView):
     """PUT 수정, DELETE 삭제"""
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+
+    def get_menu_code(self, request):
+        qid = self.kwargs.get("question_id")
+        try:
+            q = ContentQuestion.objects.only("content_type").get(question_id=qid)
+            return _menu_code_for_content_type(q.content_type)
+        except ContentQuestion.DoesNotExist:
+            return MenuCodes.ARTICLE
 
     def _get_question(self, question_id):
         try:

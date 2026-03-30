@@ -16,6 +16,8 @@ from .serializers import (
     ContentAuthorUpdateSerializer,
 )
 from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.menu_codes import MenuCodes
+from sites.admin_api.permissions import MenuPermission
 from core.utils import create_success_response, create_error_response, create_api_response
 
 from .s3_utils import profile_image_to_presigned as _profile_image_to_presigned
@@ -26,7 +28,8 @@ logger = logging.getLogger(__name__)
 class AuthorListView(APIView):
     """저자 목록 조회 GET /authors/list/"""
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.CONTENT_AUTHOR
 
     def get(self, request):
         try:
@@ -70,7 +73,8 @@ class AuthorListView(APIView):
 class AuthorCreateView(APIView):
     """저자 등록 POST /authors/create/"""
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.CONTENT_AUTHOR
 
     def post(self, request):
         serializer = ContentAuthorCreateSerializer(data=request.data)
@@ -99,7 +103,8 @@ class AuthorCreateView(APIView):
 class AuthorDetailView(APIView):
     """저자 상세 조회/수정/삭제 GET/PUT/DELETE /authors/{id}/"""
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.CONTENT_AUTHOR
 
     def get(self, request, id):
         try:
@@ -185,7 +190,8 @@ class AuthorDetailView(APIView):
 class AuthorsByContentTypeView(APIView):
     """콘텐츠 유형별 ACTIVE 저자 목록 GET /authors/by-content-type?type=ARTICLE|VIDEO|SEMINAR"""
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.CONTENT_AUTHOR
 
     def get(self, request):
         content_type = request.query_params.get('type', '').strip().upper()

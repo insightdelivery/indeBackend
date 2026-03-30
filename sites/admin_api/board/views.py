@@ -9,6 +9,8 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.filters import SearchFilter, OrderingFilter
 
 from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.menu_codes import MenuCodes
+from sites.admin_api.permissions import MenuPermission
 from apps.notice.models import Notice
 from apps.notice.serializers import (
     NoticeListSerializer,
@@ -34,7 +36,8 @@ class NoticePagination(PageNumberPagination):
 class AdminNoticeViewSet(viewsets.ModelViewSet):
     """관리자 공지사항 CRUD (AdminJWT)"""
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.NOTICE
     queryset = Notice.objects.all()
     pagination_class = NoticePagination
     filter_backends = [SearchFilter, OrderingFilter]
@@ -68,7 +71,8 @@ class FAQPagination(PageNumberPagination):
 class AdminFAQViewSet(viewsets.ModelViewSet):
     """관리자 FAQ CRUD (AdminJWT)"""
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.FAQ
     queryset = FAQ.objects.all()
     pagination_class = FAQPagination
     ordering = ["order"]
@@ -88,7 +92,8 @@ class InquiryPagination(PageNumberPagination):
 class AdminInquiryViewSet(viewsets.ModelViewSet):
     """관리자 1:1 문의 목록/상세/답변 (AdminJWT), 목록/상세에 문의 회원 정보 포함"""
     authentication_classes = [AdminJWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.INQUIRY
     queryset = Inquiry.objects.select_related("user").all()
     pagination_class = InquiryPagination
     ordering = ["-created_at"]
