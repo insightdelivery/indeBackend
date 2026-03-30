@@ -27,6 +27,10 @@ class Inquiry(models.Model):
         max_length=20, choices=STATUS_CHOICES, default="waiting"
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    # 관리자 답변 안내 메일 발송·열람 추적 (메일 본문 픽셀 URL에 사용)
+    answer_email_sent_at = models.DateTimeField(blank=True, null=True)
+    answer_email_opened_at = models.DateTimeField(blank=True, null=True)
+    answer_email_track_token = models.CharField(max_length=64, blank=True, default="")
 
     class Meta:
         ordering = ["-created_at"]

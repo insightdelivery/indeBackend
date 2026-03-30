@@ -18,8 +18,11 @@ from apps.notice.serializers import (
 from apps.faq.models import FAQ
 from apps.faq.serializers import FAQSerializer, FAQCreateUpdateSerializer
 from apps.inquiry.models import Inquiry
-from apps.inquiry.serializers import InquiryAnswerSerializer
-from .serializers import AdminInquiryListSerializer, AdminInquiryDetailSerializer
+from .serializers import (
+    AdminInquiryListSerializer,
+    AdminInquiryDetailSerializer,
+    AdminInquiryAnswerSerializer,
+)
 
 
 class NoticePagination(PageNumberPagination):
@@ -94,7 +97,7 @@ class AdminInquiryViewSet(viewsets.ModelViewSet):
         if self.action == "list":
             return AdminInquiryListSerializer
         if self.action in ("partial_update", "update"):
-            return InquiryAnswerSerializer
+            return AdminInquiryAnswerSerializer
         return AdminInquiryDetailSerializer
 
     def partial_update(self, request, *args, **kwargs):

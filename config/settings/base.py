@@ -240,6 +240,9 @@ CSRF_TRUSTED_ORIGINS = _csrf_origins if _csrf_origins else [
 # OAuth/인증 메일 등 프론트 리다이렉트 베이스 URL
 PUBLIC_VERIFY_BASE_URL = (os.getenv("PUBLIC_VERIFY_BASE_URL") or "").strip().rstrip("/")
 
+# 1:1 문의 답변 메일 내 열람 추적 픽셀 (public_api 절대 URL, 예: https://api.inde.kr)
+INQUIRY_EMAIL_TRACK_BASE_URL = (os.getenv("INQUIRY_EMAIL_TRACK_BASE_URL") or "").strip().rstrip("/")
+
 # JWT 설정
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
 JWT_ALGORITHM = "HS256"
