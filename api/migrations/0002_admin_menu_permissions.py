@@ -40,6 +40,36 @@ def _mysql_table_exists(cursor, table: str) -> bool:
     return cursor.fetchone()[0] > 0
 
 
+def _mysql_user_id_column_def_sql(cursor, admin_tbl: str) -> str:
+    """
+    FK 자식 컬럼은 부모(memberShipSid)와 타입·문자셋·콜레이션이 동일해야 InnoDB errno 150이 나지 않는다.
+    (프로덕션에서 utf8mb4_general_ci vs unicode_ci 불일치 등 방지)
+    """
+    cursor.execute(
+        """
+        SELECT COLUMN_TYPE, CHARACTER_SET_NAME, COLLATION_NAME
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = %s
+          AND COLUMN_NAME = 'memberShipSid'
+        """,
+        [admin_tbl],
+    )
+    row = cursor.fetchone()
+    if not row or not row[0]:
+        raise RuntimeError(
+            "adminMemberShip.memberShipSid 컬럼 정의를 읽을 수 없습니다. 테이블명=%r" % (admin_tbl,)
+        )
+    column_type, charset, collation = row[0], row[1], row[2]
+    if charset and collation:
+        return "`user_id` {} CHARACTER SET {} COLLATE {} NOT NULL".format(
+            column_type,
+            charset,
+            collation,
+        )
+    return "`user_id` {} NOT NULL".format(column_type)
+
+
 def apply_admin_menu_permissions_schema(apps, schema_editor):
     """이미 존재하는 객체는 건너뜀 (부분 적용·수동 DDL 호환)."""
     conn = schema_editor.connection
@@ -59,6 +89,8 @@ def apply_admin_menu_permissions_schema(apps, schema_editor):
             if not admin_tbl:
                 raise RuntimeError("adminMemberShip 테이블을 찾을 수 없습니다.")
 
+            user_id_col = _mysql_user_id_column_def_sql(cursor, admin_tbl)
+            admin_tbl_esc = admin_tbl.replace("`", "``")
             cursor.execute(
                 """
                 CREATE TABLE `user_permissions` (
@@ -67,15 +99,16 @@ def apply_admin_menu_permissions_schema(apps, schema_editor):
                     `can_read` TINYINT(1) NOT NULL DEFAULT 1,
                     `can_write` TINYINT(1) NOT NULL DEFAULT 0,
                     `can_delete` TINYINT(1) NOT NULL DEFAULT 0,
-                    `user_id` VARCHAR(15) NOT NULL,
+                    {user_id_col},
                     PRIMARY KEY (`id`),
                     CONSTRAINT `uniq_user_menu_code` UNIQUE (`user_id`, `menu_code`),
                     KEY `user_perm_user_menu_idx` (`user_id`, `menu_code`),
                     CONSTRAINT `user_permissions_user_fk`
-                        FOREIGN KEY (`user_id`) REFERENCES `{}` (`memberShipSid`) ON DELETE CASCADE
+                        FOREIGN KEY (`user_id`) REFERENCES `{admin_tbl}` (`memberShipSid`) ON DELETE CASCADE
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """.format(
-                    admin_tbl
+                    user_id_col=user_id_col,
+                    admin_tbl=admin_tbl_esc,
                 )
             )
         return
