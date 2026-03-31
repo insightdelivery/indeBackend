@@ -165,6 +165,9 @@ urlpatterns = [
     # 콘텐츠 질문/답변 (공개)
     path('api/content/', include('apps.content_question.public_urls')),
     path('api/content', include('apps.content_question.public_urls')),
+    # 콘텐츠 댓글 (공개)
+    path('api/', include('apps.content_comments.public_urls')),
+    path('api', include('apps.content_comments.public_urls')),
     # 라이브러리 사용자 활동 (userPublicActiviteLog.md)
     path('api/library/useractivity/view', LibraryUserActivityView.as_view()),
     path('api/library/useractivity/view/', LibraryUserActivityView.as_view()),

@@ -72,6 +72,7 @@ def get_urlpatterns():
         path('publicMembers', include('sites.admin_api.public_members.urls')),
         path('homepage-doc-info/', include('sites.admin_api.homepage_doc.urls')),
         path('homepage-doc-info', include('sites.admin_api.homepage_doc.urls')),
+        path('', include('apps.content_comments.admin_urls')),
     ]
 
 # urlpatterns를 함수에서 가져옴

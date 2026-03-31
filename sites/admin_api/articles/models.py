@@ -14,6 +14,12 @@ class Article(models.Model):
     title = models.CharField(max_length=500, verbose_name='제목')
     subtitle = models.CharField(max_length=500, null=True, blank=True, verbose_name='부제목')
     content = models.TextField(verbose_name='본문 내용')
+    sermonHighlight = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name='말씀 돋보기',
+        db_comment='아티클 본문 하단에 노출하는 말씀 돋보기 텍스트',
+    )
     thumbnail = models.CharField(max_length=500, null=True, blank=True, verbose_name='썸네일 URL')
     
     # 분류 및 작성자
@@ -47,6 +53,7 @@ class Article(models.Model):
     # 통계 정보
     viewCount = models.IntegerField(default=0, verbose_name='조회수')
     rating = models.FloatField(null=True, blank=True, verbose_name='평점')
+    allowComment = models.BooleanField(default=True, verbose_name='댓글 허용', db_comment='댓글 허용 여부 (true=표시/작성 가능)')
     commentCount = models.IntegerField(default=0, verbose_name='댓글 수')
     highlightCount = models.IntegerField(default=0, verbose_name='하이라이트 수')
     questionCount = models.IntegerField(default=0, verbose_name='질문 수')

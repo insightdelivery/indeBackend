@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "apps.faq",
     "apps.inquiry",
     "apps.content_question",
+    "apps.content_comments",
     "apps.highlight",
     "apps.display_event",
 ]
