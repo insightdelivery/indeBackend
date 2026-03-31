@@ -256,6 +256,7 @@ def assign_default_permissions(user: AdminMemberShip) -> None:
 def reapply_level_template_permissions(user: AdminMemberShip) -> dict:
     """
     memberShipLevel에 맞춰 user_permissions를 템플릿으로 **전면 재생성** (§14).
+    - 비활성(is_active=False): 템플릿 적용 없이 user_permissions **전부 삭제**
     - L1: 최고관리자 — DB 권한 행 삭제(판단은 레벨 우회)
     - L5: 디렉터 — admin_role=director, sysCodeVal=Y 템플릿
     - L6: 에디터 — admin_role=editor, sysCodeVal1=Y 템플릿
@@ -263,6 +264,21 @@ def reapply_level_template_permissions(user: AdminMemberShip) -> dict:
     """
     user.refresh_from_db()
     level = user.memberShipLevel
+
+    if not user.is_active:
+        deleted, _ = UserPermission.objects.filter(user=user).delete()
+        logger.info(
+            "reapply_level_template_permissions: inactive user=%s cleared_rows=%s",
+            user.memberShipSid,
+            deleted,
+        )
+        return {
+            "memberShipLevel": level,
+            "mode": "inactive_clear",
+            "admin_role": user.admin_role or "",
+            "rows_created": 0,
+            "rows_cleared": int(deleted),
+        }
 
     if level == LEVEL_SUPER_ADMIN:
         deleted, _ = UserPermission.objects.filter(user=user).delete()
@@ -413,6 +429,7 @@ def fetch_admin_menu_catalog() -> list[dict]:
                 "menu_code": sid,
                 "label": name or sid,
                 "sort": r.sysCodeSort,
+                "parent_sid": (r.sysCodeParentsSid or "").strip(),
             }
         )
     return out

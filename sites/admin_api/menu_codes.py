@@ -26,6 +26,8 @@ class MenuCodes:
     DISPLAY_EVENTS = "SYS26330B025"
     HOMEPAGE_DOC = "SYS26330B026"
     PUBLIC_MEMBERS = "SYS26330B027"
+    # 결제/주문 관리 — sysCodeManager 에 동일 sid 행 필요(코드관리에서 부모 SYS26330B006 하위 등록)
+    PAYMENT = "SYS26330B028"
     FILES_COMMON = "SYS26330B029"
 
 

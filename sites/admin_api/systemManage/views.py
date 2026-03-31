@@ -25,6 +25,12 @@ class SysCodeManagerViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, MenuPermission]
     menu_code = MenuCodes.CODE_MANAGE
     authentication_classes = [AdminJWTAuthentication]
+
+    def get_menu_code(self, request):
+        """로그인 직후 캐시용 by_parent는 인증된 관리자면 조회 허용(코드관리 메뉴 권한 불필요)."""
+        if getattr(self, "action", None) == "by_parent":
+            return None
+        return MenuCodes.CODE_MANAGE
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['sysCodeUse', 'sysCodeParentsSid']
     search_fields = ['sysCodeSid', 'sysCodeName', 'sysCodeVal']

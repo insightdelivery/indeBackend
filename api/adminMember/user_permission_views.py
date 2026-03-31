@@ -35,7 +35,8 @@ def _request_client_ip(request):
 class UserPermissionReapplyTemplateView(APIView):
     """
     POST: 대상 관리자의 현재 memberShipLevel에 맞춰 sysCodeManager 템플릿으로 user_permissions 재생성.
-    레벨 1·5·6만 지원 (그 외 400).
+    비활성(is_active=False) 관리자는 user_permissions 전부 삭제만 수행.
+    활성 중 레벨 1·5·6만 템플릿 재적용 (그 외 400).
     """
 
     authentication_classes = [AdminJWTAuthentication]
@@ -145,6 +146,7 @@ class UserPermissionListCreateView(APIView):
                     "memberShipId": target.memberShipId,
                     "memberShipName": target.memberShipName,
                     "memberShipLevel": target.memberShipLevel,
+                    "is_active": target.is_active,
                 },
                 "permissions": permissions,
             },

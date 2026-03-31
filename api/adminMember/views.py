@@ -13,6 +13,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.utils import timezone
 from django.conf import settings
 from datetime import datetime
+from django.db.models import Q
+
 from api.models import AdminMemberShip
 from core.models import AuditLog
 from api.adminMember.serializers import AdminRegisterSerializer, AdminLoginSerializer, AdminUpdateSerializer
@@ -564,8 +566,36 @@ class AdminListView(APIView):
                     }, status=status.HTTP_401_UNAUTHORIZED)
             
             # 관리자 목록 조회 (비밀번호 제외)
-            admin_members = AdminMemberShip.objects.all().order_by('-created_at')
-            
+            # q: 아이디·이름 부분 검색 / page·page_size: 페이지네이션 (없으면 전체 — 기존 클라이언트 호환)
+            # 정렬: 활성 먼저 → 비활성, 각 그룹은 등록일(created_at) 오름차순(등록순)
+            base_qs = AdminMemberShip.objects.all().order_by('-is_active', 'created_at')
+            search_q = request.query_params.get('q', '').strip()
+            if search_q:
+                base_qs = base_qs.filter(
+                    Q(memberShipId__icontains=search_q) | Q(memberShipName__icontains=search_q)
+                )
+
+            total_count = base_qs.count()
+            page_param = request.query_params.get('page')
+            page_size_param = request.query_params.get('page_size')
+
+            if page_param is not None:
+                try:
+                    page = max(1, int(page_param))
+                except (TypeError, ValueError):
+                    page = 1
+                try:
+                    page_size = int(page_size_param or 15)
+                except (TypeError, ValueError):
+                    page_size = 15
+                page_size = min(max(1, page_size), 100)
+                start = (page - 1) * page_size
+                admin_members = base_qs[start : start + page_size]
+            else:
+                page = 1
+                page_size = total_count if total_count else 1
+                admin_members = base_qs
+
             # 관리자 목록을 딕셔너리로 변환
             admin_list = []
             for admin in admin_members:
@@ -598,13 +628,15 @@ class AdminListView(APIView):
                     'action': 'list',
                     'memberShipId': request.user.memberShipId,
                     'memberShipName': request.user.memberShipName,
-                    'total_count': len(admin_list),
+                    'total_count': total_count,
                 }
             )
             
             return Response({
                 'admins': admin_list,
-                'total': len(admin_list),
+                'total': total_count,
+                'page': page,
+                'page_size': page_size,
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
