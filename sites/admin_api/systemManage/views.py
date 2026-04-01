@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -28,7 +30,7 @@ class SysCodeManagerViewSet(viewsets.ModelViewSet):
 
     def get_menu_code(self, request):
         """로그인 직후 캐시용 by_parent는 인증된 관리자면 조회 허용(코드관리 메뉴 권한 불필요)."""
-        if getattr(self, "action", None) == "by_parent":
+        if getattr(self, "action", None) in {"by_parent", "bulk"}:
             return None
         return MenuCodes.CODE_MANAGE
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
@@ -142,6 +144,32 @@ class SysCodeManagerViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def bulk(self, request):
+        """여러 부모 코드의 하위 레벨을 한 번에 조회"""
+        raw = request.query_params.get('parent_ids', '')
+        parent_ids = []
+        seen = set()
+        for token in raw.split(','):
+            pid = token.strip()
+            if not pid or pid in seen:
+                continue
+            seen.add(pid)
+            parent_ids.append(pid)
+
+        if not parent_ids:
+            return Response({})
+
+        queryset = self.queryset.filter(sysCodeParentsSid__in=parent_ids)
+        serializer = self.get_serializer(queryset, many=True)
+
+        grouped = defaultdict(list)
+        for row in serializer.data:
+            grouped[row.get('sysCodeParentsSid')].append(row)
+
+        result = {parent_id: grouped.get(parent_id, []) for parent_id in parent_ids}
+        return Response(result)
     
     @action(detail=True, methods=['patch'])
     def update_code(self, request, sysCodeSid=None):

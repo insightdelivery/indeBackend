@@ -1,4 +1,4 @@
-"""허용 doc_type 7종 (wwwDocEtc.md §2.3, §4.5)"""
+"""허용 doc_type 8종 (wwwDocEtc.md §2.3, §4.5)"""
 
 HOMEPAGE_DOC_TYPES_ORDERED = (
     'company_intro',
@@ -8,6 +8,7 @@ HOMEPAGE_DOC_TYPES_ORDERED = (
     'video_copyright',
     'seminar_copyright',
     'recommended_search',
+    'external_links',
 )
 
 HOMEPAGE_DOC_TYPES = frozenset(HOMEPAGE_DOC_TYPES_ORDERED)
