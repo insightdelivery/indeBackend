@@ -118,6 +118,7 @@ def _user_response(member):
         'region_foreign': member.region_foreign or None,
         'profile_completed': member.profile_completed,
         'email_verified': member.email_verified,
+        'newsletter_agree': bool(member.newsletter_agree),
         'joined_via': member.joined_via,
         'is_staff': getattr(member, 'is_staff', False),
         'created_at': member.created_at.isoformat() if member.created_at else None,

@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "sites.admin_api.content_author",  # 콘텐츠 저자 관리 앱
     "sites.admin_api.homepage_doc",  # 홈페이지 정적 문서
     "sites.admin_api.video",  # 비디오/세미나 (마이그레이션: video 테이블 스키마)
+    "sites.admin_api.messages",  # 문자/카카오/이메일 발송 관리
     "sites.public_api",
     "apps.notice",
     "apps.faq",

@@ -1,0 +1,725 @@
+import requests
+import re
+from datetime import datetime
+from datetime import timedelta
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
+from django.conf import settings
+from django.db import transaction
+from django.db.models import Count
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from core.utils import create_error_response, create_success_response
+from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.menu_codes import MenuCodes
+from sites.admin_api.permissions import MenuPermission
+
+from .models import (
+    KakaoTemplate,
+    MessageBatch,
+    MessageDetail,
+    MessageSenderNumber,
+    MessageSenderEmail,
+    MessageTemplate,
+)
+from .aligo_sms import send_mass_with_aligo, fetch_sms_list_all
+from .email_dispatch import send_email_batch_details
+from .serializers import (
+    KakaoTemplateSerializer,
+    MessageBatchCreateSerializer,
+    MessageBatchListSerializer,
+    MessageBatchSerializer,
+    MessageSenderNumberSerializer,
+    MessageSenderEmailSerializer,
+    MessageTemplateSerializer,
+)
+
+
+def _is_valid_receiver_email(value: str) -> bool:
+    v = (value or "").strip()
+    if not v:
+        return False
+    try:
+        validate_email(v)
+        return True
+    except DjangoValidationError:
+        return False
+
+
+class KakaoTemplateListCreateView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.SMS_KAKAO_SEND
+
+    def get(self, request):
+        status_filter = request.query_params.get("status")
+        qs = KakaoTemplate.objects.all()
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        data = KakaoTemplateSerializer(qs, many=True).data
+        return Response(create_success_response(data, "카카오 템플릿 목록 조회 성공"))
+
+    def post(self, request):
+        serializer = KakaoTemplateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                create_error_response(str(serializer.errors), "01"),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer.save()
+        return Response(
+            create_success_response(serializer.data, "카카오 템플릿이 등록되었습니다."),
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class KakaoTemplateDetailView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.SMS_KAKAO_SEND
+
+    def put(self, request, template_id: int):
+        try:
+            template = KakaoTemplate.objects.get(id=template_id)
+        except KakaoTemplate.DoesNotExist:
+            return Response(create_error_response("템플릿을 찾을 수 없습니다.", "04"), status=status.HTTP_404_NOT_FOUND)
+        serializer = KakaoTemplateSerializer(template, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(create_error_response(str(serializer.errors), "01"), status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(create_success_response(serializer.data, "카카오 템플릿이 수정되었습니다."))
+
+    def delete(self, request, template_id: int):
+        deleted_count, _ = KakaoTemplate.objects.filter(id=template_id).delete()
+        if deleted_count == 0:
+            return Response(create_error_response("템플릿을 찾을 수 없습니다.", "04"), status=status.HTTP_404_NOT_FOUND)
+        return Response(create_success_response(None, "카카오 템플릿이 삭제되었습니다."))
+
+
+class MessageBatchListCreateView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+
+    def get_menu_code(self, request):
+        if request.method == "GET":
+            # 문자 내역 + 이메일 내역 메뉴 중 하나라도 읽기 허용 시 목록 조회 가능
+            return (MenuCodes.SMS_KAKAO_HISTORY, MenuCodes.EMAIL_HISTORY)
+        body = request.data if isinstance(request.data, dict) else {}
+        if body.get("type") == MessageBatch.TYPE_EMAIL:
+            return MenuCodes.EMAIL_SEND
+        return MenuCodes.SMS_KAKAO_SEND
+
+    def get(self, request):
+        qs = MessageBatch.objects.all()
+        status_filter = request.query_params.get("status")
+        type_filter = request.query_params.get("type")
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        if type_filter:
+            qs = qs.filter(type=type_filter)
+        qs = qs.annotate(detail_count=Count("details"))
+        data = MessageBatchListSerializer(qs, many=True).data
+        return Response(create_success_response(data, "전송 배치 목록 조회 성공"))
+
+    def post(self, request):
+        serializer = MessageBatchCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                create_error_response(str(serializer.errors), "01"),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payload = serializer.validated_data
+        details_payload = payload.pop("details")
+        now = timezone.now()
+        batch_status = payload.get("status") or MessageBatch.STATUS_PROCESSING
+        is_scheduled_request = batch_status == MessageBatch.STATUS_SCHEDULED
+        scheduled_at = payload.get("scheduled_at")
+        if is_scheduled_request:
+            if scheduled_at is None:
+                return Response(
+                    create_error_response("예약 발송은 예약 일시(scheduled_at)가 필요합니다.", "01"),
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            min_allowed = now + timedelta(minutes=10)
+            if scheduled_at < min_allowed:
+                return Response(
+                    create_error_response("예약 발송 시간은 현재 기준 최소 10분 이후여야 합니다.", "01"),
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        with transaction.atomic():
+            batch = MessageBatch.objects.create(
+                **payload,
+                total_count=len(details_payload),
+                requested_at=now,
+                created_by_id=str(getattr(request.user, "memberShipSid", "")),
+            )
+            details = []
+            for d in details_payload:
+                if batch.type == MessageBatch.TYPE_EMAIL:
+                    raw_email = (d.get("receiver_email") or "").strip()
+                    is_ok = _is_valid_receiver_email(raw_email)
+                    details.append(
+                        MessageDetail(
+                            batch=batch,
+                            receiver_name=d.get("receiver_name", ""),
+                            receiver_phone="",
+                            receiver_email=raw_email,
+                            template_id=d.get("template_id"),
+                            template_name=d.get("template_name", ""),
+                            variables=d.get("variables", {}),
+                            final_content=d.get("final_content", ""),
+                            status=MessageDetail.STATUS_SUCCESS if is_ok else MessageDetail.STATUS_EXCLUDED,
+                            error_reason="" if is_ok else "invalid_email",
+                        )
+                    )
+                else:
+                    phone = (d.get("receiver_phone") or "").strip()
+                    phone = "".join(ch for ch in phone if ch.isdigit())
+                    is_valid_phone = bool(re.match(r"^01\d{8,9}$", phone))
+                    details.append(
+                        MessageDetail(
+                            batch=batch,
+                            receiver_name=d.get("receiver_name", ""),
+                            receiver_phone=phone,
+                            receiver_email=d.get("receiver_email", ""),
+                            template_id=d.get("template_id"),
+                            template_name=d.get("template_name", ""),
+                            variables=d.get("variables", {}),
+                            final_content=d.get("final_content", ""),
+                            status=MessageDetail.STATUS_SUCCESS if is_valid_phone else MessageDetail.STATUS_EXCLUDED,
+                            error_reason="" if is_valid_phone else "invalid_phone",
+                        )
+                    )
+            MessageDetail.objects.bulk_create(details)
+
+            valid_details = [d for d in details if d.status == MessageDetail.STATUS_SUCCESS]
+            batch.excluded_count = len(details) - len(valid_details)
+            batch.success_count = 0
+            batch.fail_count = 0
+
+            if batch.type == MessageBatch.TYPE_SMS and valid_details:
+                db_valid_details = list(
+                    MessageDetail.objects.filter(batch=batch, status=MessageDetail.STATUS_SUCCESS).order_by("id")
+                )
+                phones = [d.receiver_phone for d in db_valid_details]
+                messages = [d.final_content or batch.content for d in db_valid_details]
+                reserve_at = timezone.localtime(scheduled_at) if is_scheduled_request else None
+                send_result = send_mass_with_aligo(batch.sender, batch.title, phones, messages, reserve_at=reserve_at)
+                batch.api_response_logs = [send_result.get("raw")] if send_result.get("raw") is not None else []
+                if send_result.get("ok"):
+                    msg_id = str(send_result.get("msg_id") or "")
+                    batch.result_snapshot = {
+                        "provider": "aligo",
+                        "msg_id": msg_id,
+                        "msg_type": str(send_result.get("msg_type") or ""),
+                        "is_reserved": is_scheduled_request,
+                    }
+                    success_cnt = int(send_result.get("success_cnt") or 0)
+                    # 알리고 send_mass 응답은 수신자별 성공/실패를 직접 주지 않으므로 순차 매핑
+                    for idx, d in enumerate(db_valid_details):
+                        if idx < success_cnt:
+                            d.status = MessageDetail.STATUS_SUCCESS
+                            d.external_code = msg_id
+                            d.external_message = str(send_result.get("message") or "")
+                            d.error_reason = ""
+                            if not is_scheduled_request:
+                                d.sent_at = now
+                        else:
+                            d.status = MessageDetail.STATUS_FAIL
+                            d.error_reason = "provider_error"
+                            d.external_message = str(send_result.get("message") or "")
+                        d.save(update_fields=["status", "external_code", "external_message", "sent_at", "error_reason", "updated_at"])
+                    batch.success_count = success_cnt
+                    batch.fail_count = max(0, len(db_valid_details) - success_cnt)
+                    batch.is_processed = True
+                    if is_scheduled_request:
+                        batch.status = MessageBatch.STATUS_SCHEDULED
+                        batch.completed_at = None
+                    else:
+                        batch.status = MessageBatch.STATUS_COMPLETED if batch.fail_count == 0 else MessageBatch.STATUS_FAILED
+                        batch.completed_at = now
+                else:
+                    for d in db_valid_details:
+                        d.status = MessageDetail.STATUS_FAIL
+                        d.error_reason = "provider_error"
+                        d.external_message = str(send_result.get("message") or "알리고 발송 실패")
+                        d.save(update_fields=["status", "external_message", "error_reason", "updated_at"])
+                    batch.success_count = 0
+                    batch.fail_count = len(db_valid_details)
+                    batch.is_processed = True
+                    batch.status = MessageBatch.STATUS_FAILED
+                    batch.completed_at = now
+            elif batch.type == MessageBatch.TYPE_EMAIL and valid_details:
+                if is_scheduled_request:
+                    batch.success_count = len(valid_details)
+                    batch.fail_count = 0
+                    batch.is_processed = False
+                    batch.status = MessageBatch.STATUS_SCHEDULED
+                    batch.completed_at = None
+                else:
+                    out = send_email_batch_details(batch, now=now)
+                    batch.success_count = out["success"]
+                    batch.fail_count = out["fail"]
+                    batch.api_response_logs = out.get("logs") or []
+                    batch.result_snapshot = {
+                        "provider": "gmail_smtp",
+                        "via": "core.mail.send_email",
+                    }
+                    batch.is_processed = True
+                    batch.completed_at = now
+                    batch.status = (
+                        MessageBatch.STATUS_COMPLETED
+                        if out["fail"] == 0
+                        else MessageBatch.STATUS_FAILED
+                    )
+            else:
+                # 카카오 등: 요청 저장만 (실제 발송 연동 전)
+                batch.success_count = len(valid_details)
+                batch.fail_count = 0
+                if is_scheduled_request:
+                    batch.is_processed = False
+                    batch.status = MessageBatch.STATUS_SCHEDULED
+                    batch.completed_at = None
+                else:
+                    batch.is_processed = True
+                    batch.status = MessageBatch.STATUS_COMPLETED
+                    batch.completed_at = now
+            batch.save()
+
+        out = MessageBatchSerializer(batch).data
+        return Response(create_success_response(out, "전송 배치가 생성되었습니다."), status=status.HTTP_201_CREATED)
+
+
+class MessageBatchDetailView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = (MenuCodes.SMS_KAKAO_HISTORY, MenuCodes.EMAIL_HISTORY)
+
+    def get(self, request, batch_id: int):
+        try:
+            batch = MessageBatch.objects.get(id=batch_id)
+        except MessageBatch.DoesNotExist:
+            return Response(create_error_response("배치를 찾을 수 없습니다.", "04"), status=status.HTTP_404_NOT_FOUND)
+        return Response(create_success_response(MessageBatchSerializer(batch).data, "배치 상세 조회 성공"))
+
+
+class MessageBatchCancelView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = (MenuCodes.SMS_KAKAO_HISTORY, MenuCodes.EMAIL_HISTORY)
+
+    def post(self, request, batch_id: int):
+        try:
+            batch = MessageBatch.objects.get(id=batch_id)
+        except MessageBatch.DoesNotExist:
+            return Response(create_error_response("배치를 찾을 수 없습니다.", "04"), status=status.HTTP_404_NOT_FOUND)
+        if batch.status != MessageBatch.STATUS_SCHEDULED:
+            return Response(create_error_response("예약 상태에서만 취소 가능합니다.", "01"), status=status.HTTP_400_BAD_REQUEST)
+        batch.status = MessageBatch.STATUS_CANCELED
+        batch.canceled_at = timezone.now()
+        batch.is_processed = True
+        batch.save(update_fields=["status", "canceled_at", "is_processed", "updated_at"])
+        return Response(create_success_response(MessageBatchSerializer(batch).data, "예약 발송이 취소되었습니다."))
+
+
+class MessageBatchResendFailedView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = (MenuCodes.SMS_KAKAO_HISTORY, MenuCodes.EMAIL_HISTORY)
+
+    def post(self, request, batch_id: int):
+        try:
+            source = MessageBatch.objects.get(id=batch_id)
+        except MessageBatch.DoesNotExist:
+            return Response(create_error_response("원본 배치를 찾을 수 없습니다.", "04"), status=status.HTTP_404_NOT_FOUND)
+
+        failed_details = list(source.details.filter(status=MessageDetail.STATUS_FAIL))
+        if not failed_details:
+            return Response(create_error_response("재전송할 실패 건이 없습니다.", "01"), status=status.HTTP_400_BAD_REQUEST)
+
+        snap = dict(source.request_snapshot or {}) if isinstance(source.request_snapshot, dict) else {}
+        snap["resend_from"] = source.id
+
+        with transaction.atomic():
+            new_batch = MessageBatch.objects.create(
+                type=source.type,
+                sender=source.sender,
+                title=source.title,
+                content=source.content,
+                total_count=len(failed_details),
+                status=MessageBatch.STATUS_PROCESSING,
+                is_processed=False,
+                created_by_id=str(getattr(request.user, "memberShipSid", "")),
+                request_snapshot=snap,
+            )
+            clones = []
+            for detail in failed_details:
+                clones.append(
+                    MessageDetail(
+                        batch=new_batch,
+                        receiver_name=detail.receiver_name,
+                        receiver_phone=detail.receiver_phone,
+                        receiver_email=detail.receiver_email,
+                        template_id=detail.template_id,
+                        template_name=detail.template_name,
+                        variables=detail.variables,
+                        final_content=detail.final_content,
+                        status=MessageDetail.STATUS_SUCCESS,
+                    )
+                )
+            MessageDetail.objects.bulk_create(clones)
+            new_batch.excluded_count = 0
+
+            if source.type == MessageBatch.TYPE_EMAIL:
+                now = timezone.now()
+                out = send_email_batch_details(new_batch, now=now)
+                new_batch.success_count = out["success"]
+                new_batch.fail_count = out["fail"]
+                new_batch.api_response_logs = out.get("logs") or []
+                new_batch.result_snapshot = {"provider": "gmail_smtp", "resend_from": source.id}
+                new_batch.is_processed = True
+                new_batch.completed_at = now
+                new_batch.status = (
+                    MessageBatch.STATUS_COMPLETED
+                    if out["fail"] == 0
+                    else MessageBatch.STATUS_FAILED
+                )
+            else:
+                new_batch.success_count = len(clones)
+                new_batch.fail_count = 0
+                new_batch.is_processed = True
+                new_batch.status = MessageBatch.STATUS_COMPLETED
+                new_batch.completed_at = timezone.now()
+
+            new_batch.save()
+
+        return Response(create_success_response(MessageBatchSerializer(new_batch).data, "실패 건 재전송이 생성되었습니다."))
+
+
+class MessageSenderNumberListCreateView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = (MenuCodes.SMS_SENDER_NUMBER, MenuCodes.SMS_KAKAO_SEND)
+
+    def get(self, request):
+        status_filter = request.query_params.get("status")
+        qs = MessageSenderNumber.objects.filter(deleted_at__isnull=True)
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        data = MessageSenderNumberSerializer(qs, many=True).data
+        return Response(create_success_response(data, "발신번호 목록 조회 성공"))
+
+    def post(self, request):
+        serializer = MessageSenderNumberSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(create_error_response(str(serializer.errors), "01"), status=status.HTTP_400_BAD_REQUEST)
+        normalized = serializer.validated_data["sender_number"]
+        existing = MessageSenderNumber.objects.filter(sender_number=normalized).order_by("-id").first()
+
+        # soft delete 된 번호는 신규 생성 대신 복구/갱신 처리
+        if existing and existing.deleted_at is not None:
+            existing.deleted_at = None
+            existing.manager_name = serializer.validated_data.get("manager_name", "")
+            existing.comment = serializer.validated_data.get("comment", "")
+            existing.request_type = serializer.validated_data.get("request_type", existing.request_type)
+            existing.status = serializer.validated_data.get("status", existing.status)
+            existing.reject_reason = ""
+            existing.processed_at = timezone.now() if existing.status == MessageSenderNumber.STATUS_APPROVED else None
+            existing.created_by_id = str(getattr(request.user, "memberShipSid", ""))
+            existing.save()
+            out = MessageSenderNumberSerializer(existing).data
+            return Response(create_success_response(out, "삭제된 발신번호가 복구되었습니다."), status=status.HTTP_200_OK)
+
+        if existing and existing.deleted_at is None:
+            return Response(create_error_response("이미 등록된 발신번호입니다.", "01"), status=status.HTTP_400_BAD_REQUEST)
+
+        obj = serializer.save(
+            created_by_id=str(getattr(request.user, "memberShipSid", "")),
+            processed_at=timezone.now() if serializer.validated_data.get("status") == MessageSenderNumber.STATUS_APPROVED else None,
+        )
+        out = MessageSenderNumberSerializer(obj).data
+        return Response(create_success_response(out, "발신번호가 등록되었습니다."), status=status.HTTP_201_CREATED)
+
+
+class MessageSenderNumberDeleteView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = (MenuCodes.SMS_SENDER_NUMBER, MenuCodes.SMS_KAKAO_SEND)
+
+    def delete(self, request, sender_id: int):
+        try:
+            obj = MessageSenderNumber.objects.get(id=sender_id, deleted_at__isnull=True)
+        except MessageSenderNumber.DoesNotExist:
+            return Response(create_error_response("발신번호를 찾을 수 없습니다.", "04"), status=status.HTTP_404_NOT_FOUND)
+        obj.deleted_at = timezone.now()
+        obj.save(update_fields=["deleted_at", "updated_at"])
+        return Response(create_success_response(None, "발신번호가 삭제되었습니다."))
+
+
+class MessageSenderEmailListCreateView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.EMAIL_SENDER_MANAGE
+
+    def get(self, request):
+        status_filter = request.query_params.get("status")
+        qs = MessageSenderEmail.objects.filter(deleted_at__isnull=True)
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        data = MessageSenderEmailSerializer(qs, many=True).data
+        return Response(create_success_response(data, "발신 이메일 목록 조회 성공"))
+
+    def post(self, request):
+        serializer = MessageSenderEmailSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(create_error_response(str(serializer.errors), "01"), status=status.HTTP_400_BAD_REQUEST)
+        normalized = serializer.validated_data["sender_email"]
+        existing = MessageSenderEmail.objects.filter(sender_email=normalized).order_by("-id").first()
+
+        if existing and existing.deleted_at is not None:
+            existing.deleted_at = None
+            existing.manager_name = serializer.validated_data.get("manager_name", "")
+            existing.comment = serializer.validated_data.get("comment", "")
+            existing.request_type = serializer.validated_data.get("request_type", existing.request_type)
+            existing.status = serializer.validated_data.get("status", existing.status)
+            existing.reject_reason = ""
+            existing.processed_at = timezone.now() if existing.status == MessageSenderEmail.STATUS_APPROVED else None
+            existing.created_by_id = str(getattr(request.user, "memberShipSid", ""))
+            existing.save()
+            out = MessageSenderEmailSerializer(existing).data
+            return Response(create_success_response(out, "삭제된 발신 이메일이 복구되었습니다."), status=status.HTTP_200_OK)
+
+        if existing and existing.deleted_at is None:
+            return Response(create_error_response("이미 등록된 발신 이메일입니다.", "01"), status=status.HTTP_400_BAD_REQUEST)
+
+        obj = serializer.save(
+            created_by_id=str(getattr(request.user, "memberShipSid", "")),
+            processed_at=timezone.now()
+            if serializer.validated_data.get("status") == MessageSenderEmail.STATUS_APPROVED
+            else None,
+        )
+        out = MessageSenderEmailSerializer(obj).data
+        return Response(create_success_response(out, "발신 이메일이 등록되었습니다."), status=status.HTTP_201_CREATED)
+
+
+class MessageSenderEmailDeleteView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.EMAIL_SENDER_MANAGE
+
+    def delete(self, request, sender_id: int):
+        try:
+            obj = MessageSenderEmail.objects.get(id=sender_id, deleted_at__isnull=True)
+        except MessageSenderEmail.DoesNotExist:
+            return Response(create_error_response("발신 이메일을 찾을 수 없습니다.", "04"), status=status.HTTP_404_NOT_FOUND)
+        obj.deleted_at = timezone.now()
+        obj.save(update_fields=["deleted_at", "updated_at"])
+        return Response(create_success_response(None, "발신 이메일이 삭제되었습니다."))
+
+
+class MessageTemplateListCreateView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = (MenuCodes.SMS_KAKAO_SEND, MenuCodes.EMAIL_SEND)
+
+    def get(self, request):
+        channel = request.query_params.get("channel")
+        qs = MessageTemplate.objects.filter(is_active=True)
+        if channel:
+            qs = qs.filter(channel=channel)
+        data = MessageTemplateSerializer(qs, many=True).data
+        return Response(create_success_response(data, "템플릿 목록 조회 성공"))
+
+    def post(self, request):
+        serializer = MessageTemplateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(create_error_response(str(serializer.errors), "01"), status=status.HTTP_400_BAD_REQUEST)
+        obj = serializer.save(created_by_id=str(getattr(request.user, "memberShipSid", "")))
+        return Response(
+            create_success_response(MessageTemplateSerializer(obj).data, "템플릿이 저장되었습니다."),
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class MessageTemplateDetailView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = (MenuCodes.SMS_KAKAO_SEND, MenuCodes.EMAIL_SEND)
+
+    def put(self, request, template_id: int):
+        try:
+            obj = MessageTemplate.objects.get(id=template_id, is_active=True)
+        except MessageTemplate.DoesNotExist:
+            return Response(create_error_response("템플릿을 찾을 수 없습니다.", "04"), status=status.HTTP_404_NOT_FOUND)
+        serializer = MessageTemplateSerializer(obj, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(create_error_response(str(serializer.errors), "01"), status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(create_success_response(serializer.data, "템플릿이 수정되었습니다."))
+
+    def delete(self, request, template_id: int):
+        try:
+            obj = MessageTemplate.objects.get(id=template_id, is_active=True)
+        except MessageTemplate.DoesNotExist:
+            return Response(create_error_response("템플릿을 찾을 수 없습니다.", "04"), status=status.HTTP_404_NOT_FOUND)
+        obj.is_active = False
+        obj.save(update_fields=["is_active", "updated_at"])
+        return Response(create_success_response(None, "템플릿이 삭제되었습니다."))
+
+
+class AligoRemainView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.SMS_KAKAO_SEND
+
+    def get(self, request):
+        api_key = (getattr(settings, "ALIGO_API_KEY", "") or "").strip()
+        user_id = (getattr(settings, "ALIGO_USER_ID", "") or "").strip()
+        if not api_key or not user_id:
+            return Response(
+                create_error_response("ALIGO_API_KEY 또는 ALIGO_USER_ID가 설정되지 않았습니다.", "01"),
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        try:
+            resp = requests.post(
+                "https://apis.aligo.in/remain/",
+                data={"key": api_key, "user_id": user_id},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+        except requests.RequestException:
+            return Response(
+                create_error_response("알리고 잔여건수 조회 중 네트워크 오류가 발생했습니다.", "99"),
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except ValueError:
+            return Response(
+                create_error_response("알리고 응답을 해석할 수 없습니다.", "99"),
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        code = str(payload.get("result_code", ""))
+        if code != "1":
+            return Response(
+                create_error_response(payload.get("message") or "알리고 잔여건수 조회 실패", "01"),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        def to_int(v):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return 0
+
+        result = {
+            "sms_cnt": to_int(payload.get("SMS_CNT")),
+            "lms_cnt": to_int(payload.get("LMS_CNT")),
+            "mms_cnt": to_int(payload.get("MMS_CNT")),
+            "raw": payload,
+        }
+        return Response(create_success_response(result, "알리고 잔여건수 조회 성공"))
+
+
+def _normalize_phone(v: str) -> str:
+    return "".join(ch for ch in (v or "") if ch.isdigit())
+
+
+def _is_success_state(state_text: str) -> bool:
+    s = (state_text or "").strip()
+    return "완료" in s or "성공" in s
+
+
+class MessageBatchSyncResultView(APIView):
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_code = MenuCodes.SMS_KAKAO_HISTORY
+
+    def post(self, request, batch_id: int):
+        try:
+            batch = MessageBatch.objects.get(id=batch_id)
+        except MessageBatch.DoesNotExist:
+            return Response(create_error_response("배치를 찾을 수 없습니다.", "04"), status=status.HTTP_404_NOT_FOUND)
+
+        if batch.type != MessageBatch.TYPE_SMS:
+            return Response(create_error_response("문자(sms) 배치만 결과 동기화 가능합니다.", "01"), status=status.HTTP_400_BAD_REQUEST)
+
+        msg_id = str((batch.result_snapshot or {}).get("msg_id") or "").strip()
+        if not msg_id:
+            # 과거 데이터 호환: detail 외부코드에서 fallback
+            first_detail = batch.details.exclude(external_code="").first()
+            msg_id = str(first_detail.external_code if first_detail else "").strip()
+        if not msg_id:
+            return Response(create_error_response("알리고 msg_id가 없어 동기화할 수 없습니다.", "01"), status=status.HTTP_400_BAD_REQUEST)
+
+        sync_result = fetch_sms_list_all(msg_id)
+        if not sync_result.get("ok"):
+            return Response(create_error_response(str(sync_result.get("message") or "동기화 실패"), "99"), status=status.HTTP_502_BAD_GATEWAY)
+
+        rows = sync_result.get("list") or []
+        details = list(batch.details.all())
+        detail_by_phone: dict[str, list[MessageDetail]] = {}
+        for d in details:
+            detail_by_phone.setdefault(_normalize_phone(d.receiver_phone), []).append(d)
+
+        updated = 0
+        pending = 0
+        for row in rows:
+            phone = _normalize_phone(str(row.get("receiver") or ""))
+            if not phone or phone not in detail_by_phone:
+                continue
+            state_text = str(row.get("sms_state") or "")
+            send_date = str(row.get("send_date") or "").strip()
+            for d in detail_by_phone[phone]:
+                if "전송중" in state_text or "대기" in state_text:
+                    pending += 1
+                    d.external_message = state_text
+                    d.save(update_fields=["external_message", "updated_at"])
+                    continue
+                d.status = MessageDetail.STATUS_SUCCESS if _is_success_state(state_text) else MessageDetail.STATUS_FAIL
+                d.external_message = state_text
+                d.external_code = msg_id
+                if send_date:
+                    try:
+                        d.sent_at = datetime.strptime(send_date, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        pass
+                d.error_reason = "" if d.status == MessageDetail.STATUS_SUCCESS else "provider_result_sync_fail"
+                d.save(update_fields=["status", "external_message", "external_code", "sent_at", "error_reason", "updated_at"])
+                updated += 1
+
+        success_count = batch.details.filter(status=MessageDetail.STATUS_SUCCESS).count()
+        fail_count = batch.details.filter(status=MessageDetail.STATUS_FAIL).count()
+        excluded_count = batch.details.filter(status=MessageDetail.STATUS_EXCLUDED).count()
+        batch.success_count = success_count
+        batch.fail_count = fail_count
+        batch.excluded_count = excluded_count
+        batch.api_response_logs = (batch.api_response_logs or []) + (sync_result.get("raw") or [])
+        if pending > 0:
+            batch.status = MessageBatch.STATUS_PROCESSING
+        else:
+            batch.status = MessageBatch.STATUS_COMPLETED if fail_count == 0 else MessageBatch.STATUS_FAILED
+            batch.completed_at = timezone.now()
+            batch.is_processed = True
+        batch.save()
+
+        return Response(
+            create_success_response(
+                {
+                    "batch_id": batch.id,
+                    "updated_count": updated,
+                    "pending_count": pending,
+                    "success_count": success_count,
+                    "fail_count": fail_count,
+                    "excluded_count": excluded_count,
+                },
+                "알리고 상세결과 동기화 완료",
+            )
+        )
