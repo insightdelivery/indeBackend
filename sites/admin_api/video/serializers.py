@@ -58,14 +58,9 @@ class VideoSerializer(serializers.ModelSerializer):
             'sourceType',
             'thumbnail',
             'speaker',
-            'speakerAffiliation',
-            'editor',
-            'director',
+            'speaker_id',
             'visibility',
             'status',
-            'isNewBadge',
-            'isMaterialBadge',
-            'allowRating',
             'allowComment',
             'viewCount',
             'rating',
@@ -148,13 +143,10 @@ class VideoListSerializer(serializers.ModelSerializer):
             'sourceType',
             'thumbnail',
             'speaker',
-            'speakerAffiliation',
-            'editor',
-            'director',
+            'speaker_id',
             'visibility',
             'status',
-            'isNewBadge',
-            'isMaterialBadge',
+            'allowComment',
             'viewCount',
             'rating',
             'commentCount',
@@ -199,14 +191,9 @@ class VideoCreateSerializer(serializers.ModelSerializer):
             'sourceType',
             'thumbnail',
             'speaker',
-            'speakerAffiliation',
-            'editor',
-            'director',
+            'speaker_id',
             'visibility',
             'status',
-            'isNewBadge',
-            'isMaterialBadge',
-            'allowRating',
             'allowComment',
             'tags',
             'questions',
@@ -246,6 +233,21 @@ class VideoCreateSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
+        initial = self.initial_data or {}
+        raw_sid = attrs.get('speaker_id', initial.get('speaker_id'))
+        if raw_sid == '':
+            attrs['speaker_id'] = None
+            raw_sid = None
+        sp = attrs.get('speaker')
+        if sp is None:
+            sp = initial.get('speaker')
+        has_id = raw_sid is not None and raw_sid != ''
+        has_name = sp is not None and str(sp).strip() != ''
+        if not has_id and not has_name:
+            raise serializers.ValidationError(
+                {'speaker': '출연자/강사를 선택하거나 이름을 입력해주세요.'}
+            )
+
         ct = attrs.get('contentType')
         stream = _norm_str(attrs.get('videoStreamId'))
         url = _norm_str(attrs.get('videoUrl'))
@@ -303,14 +305,9 @@ class VideoUpdateSerializer(serializers.ModelSerializer):
             'sourceType',
             'thumbnail',
             'speaker',
-            'speakerAffiliation',
-            'editor',
-            'director',
+            'speaker_id',
             'visibility',
             'status',
-            'isNewBadge',
-            'isMaterialBadge',
-            'allowRating',
             'allowComment',
             'tags',
             'questions',
@@ -323,6 +320,8 @@ class VideoUpdateSerializer(serializers.ModelSerializer):
             'category': {'required': False},
             'videoUrl': {'required': False},
             'sourceType': {'required': False},
+            'speaker': {'required': False},
+            'speaker_id': {'required': False},
         }
 
     def validate_title(self, value):

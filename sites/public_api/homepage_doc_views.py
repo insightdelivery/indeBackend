@@ -39,7 +39,9 @@ class PublicHomepageDocDetailView(APIView):
         if data.get('bodyHtml'):
             data['bodyHtml'] = convert_s3_urls_to_presigned(data['bodyHtml'], expires_in=3600)
 
+        # 관리자 저장 직후 www에서 새로고침 시 구버전이 보이지 않도록 브라우저·중간 캐시 보관 최소화
         return Response(
             create_success_response(data, '홈페이지 문서 조회 성공'),
             status=status.HTTP_200_OK,
+            headers={'Cache-Control': 'no-store, max-age=0'},
         )

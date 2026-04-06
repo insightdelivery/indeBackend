@@ -38,8 +38,17 @@ class Video(models.Model):
     )
     thumbnail = models.CharField(max_length=500, null=True, blank=True, verbose_name='썸네일 URL')
     
-    # 인물 정보
+    # 인물 정보 (speaker_id 있으면 ContentAuthor.name 과 speaker 동기화 — article author/author_id 와 동일 패턴)
     speaker = models.CharField(max_length=200, null=True, blank=True, verbose_name='출연자/강사')
+    speaker_id = models.ForeignKey(
+        'content_author.ContentAuthor',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='videos_as_speaker',
+        db_column='speaker_id',
+        verbose_name='출연자/강사(콘텐츠 저자)',
+    )
     speakerAffiliation = models.CharField(max_length=200, null=True, blank=True, verbose_name='출연자 소속')
     editor = models.CharField(max_length=100, null=True, blank=True, verbose_name='에디터')
     director = models.CharField(max_length=100, null=True, blank=True, verbose_name='디렉터')
@@ -97,6 +106,7 @@ class Video(models.Model):
             models.Index(fields=['createdAt'], name='idx_video_created'),
             models.Index(fields=['deletedAt'], name='idx_video_deleted'),
             models.Index(fields=['speaker'], name='idx_video_speaker'),
+            models.Index(fields=['speaker_id'], name='idx_video_speaker_id'),
             models.Index(fields=['editor'], name='idx_video_editor'),
         ]
     

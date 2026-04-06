@@ -12,6 +12,7 @@ from datetime import datetime
 import logging
 
 from sites.admin_api.video.models import Video
+from sites.admin_api.video.speaker_sync import apply_video_speaker_sync
 from sites.admin_api.video.serializers import (
     VideoSerializer,
     VideoListSerializer,
@@ -66,8 +67,6 @@ class VideoListView(APIView):
         - status: 상태 (sysCodeSid, 'deleted' 포함)
         - search: 검색어 (제목, 출연자, 키워드)
         - searchType: 검색 타입 (title, speaker, keyword)
-        - editor: 작성자 (에디터명)
-        - director: 작성자 (디렉터명)
         - sort: 정렬 (createdAt, viewCount, rating 만 허용)
         """
         try:
@@ -82,8 +81,6 @@ class VideoListView(APIView):
             status_filter = request.query_params.get('status')
             search = request.query_params.get('search')
             search_type = request.query_params.get('searchType', 'all')  # all, title, speaker, keyword
-            editor = request.query_params.get('editor')
-            director = request.query_params.get('director')
             sort = request.query_params.get('sort', 'createdAt')  # createdAt, viewCount, rating
             
             # 기본 쿼리셋
@@ -127,12 +124,6 @@ class VideoListView(APIView):
             elif status_filter == 'deleted':
                 queryset = queryset.filter(status='deleted')
             
-            # 작성자 필터링
-            if editor:
-                queryset = queryset.filter(editor__icontains=editor)
-            if director:
-                queryset = queryset.filter(director__icontains=director)
-            
             # 검색 (제목, 출연자, 키워드)
             if search:
                 if search_type == 'title':
@@ -141,10 +132,7 @@ class VideoListView(APIView):
                         Q(subtitle__icontains=search)
                     )
                 elif search_type == 'speaker':
-                    queryset = queryset.filter(
-                        Q(speaker__icontains=search) |
-                        Q(speakerAffiliation__icontains=search)
-                    )
+                    queryset = queryset.filter(Q(speaker__icontains=search))
                 elif search_type == 'keyword':
                     queryset = queryset.filter(tags__icontains=search)
                 else:  # all
@@ -152,7 +140,6 @@ class VideoListView(APIView):
                         Q(title__icontains=search) |
                         Q(subtitle__icontains=search) |
                         Q(speaker__icontains=search) |
-                        Q(speakerAffiliation__icontains=search) |
                         Q(tags__icontains=search)
                     )
             
@@ -302,6 +289,9 @@ class VideoDetailView(APIView):
                     update_data['thumbnail'] = old_thumbnail if old_thumbnail else None
                 elif thumbnail_from_request == '' or thumbnail_from_request is None:
                     update_data['thumbnail'] = None
+
+            if 'speaker_id' in update_data:
+                apply_video_speaker_sync(update_data)
             
             serializer = VideoUpdateSerializer(video, data=update_data, partial=True)
             
@@ -467,8 +457,9 @@ class VideoCreateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # 비디오 생성 (임시로 ID 획득)
-            video = serializer.save()
+            validated_data = serializer.validated_data.copy()
+            apply_video_speaker_sync(validated_data)
+            video = Video.objects.create(**validated_data)
             
             # 썸네일이 base64인 경우 S3에 업로드
             if is_base64_thumbnail:
