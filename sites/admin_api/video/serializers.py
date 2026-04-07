@@ -59,6 +59,8 @@ class VideoSerializer(serializers.ModelSerializer):
             'thumbnail',
             'speaker',
             'speaker_id',
+            'speakerAffiliation',
+            'speakerProfileImage',
             'visibility',
             'status',
             'allowComment',
@@ -123,6 +125,15 @@ class VideoSerializer(serializers.ModelSerializer):
 
         return value
 
+    def validate_speakerProfileImage(self, value):
+        if not value:
+            return value
+        if value.startswith('data:image'):
+            return value
+        if len(value) > 500:
+            raise serializers.ValidationError('출연자 프로필 이미지 URL은 500자를 초과할 수 없습니다.')
+        return value
+
 
 class VideoListSerializer(serializers.ModelSerializer):
     """비디오 목록 시리얼라이저 (간소화된 필드)"""
@@ -144,6 +155,8 @@ class VideoListSerializer(serializers.ModelSerializer):
             'thumbnail',
             'speaker',
             'speaker_id',
+            'speakerAffiliation',
+            'speakerProfileImage',
             'visibility',
             'status',
             'allowComment',
@@ -192,6 +205,8 @@ class VideoCreateSerializer(serializers.ModelSerializer):
             'thumbnail',
             'speaker',
             'speaker_id',
+            'speakerAffiliation',
+            'speakerProfileImage',
             'visibility',
             'status',
             'allowComment',
@@ -232,21 +247,24 @@ class VideoCreateSerializer(serializers.ModelSerializer):
 
         return value
 
+    def validate_speakerProfileImage(self, value):
+        if not value:
+            return value
+        if value.startswith('data:image'):
+            return value
+        if len(value) > 500:
+            raise serializers.ValidationError('출연자 프로필 이미지 URL은 500자를 초과할 수 없습니다.')
+        return value
+
     def validate(self, attrs):
         initial = self.initial_data or {}
-        raw_sid = attrs.get('speaker_id', initial.get('speaker_id'))
-        if raw_sid == '':
-            attrs['speaker_id'] = None
-            raw_sid = None
         sp = attrs.get('speaker')
         if sp is None:
             sp = initial.get('speaker')
-        has_id = raw_sid is not None and raw_sid != ''
-        has_name = sp is not None and str(sp).strip() != ''
-        if not has_id and not has_name:
-            raise serializers.ValidationError(
-                {'speaker': '출연자/강사를 선택하거나 이름을 입력해주세요.'}
-            )
+        if sp is None or str(sp).strip() == '':
+            raise serializers.ValidationError({'speaker': '출연자/강사 이름을 입력해주세요.'})
+        attrs['speaker'] = str(sp).strip()
+        attrs['speaker_id'] = None
 
         ct = attrs.get('contentType')
         stream = _norm_str(attrs.get('videoStreamId'))
@@ -306,6 +324,8 @@ class VideoUpdateSerializer(serializers.ModelSerializer):
             'thumbnail',
             'speaker',
             'speaker_id',
+            'speakerAffiliation',
+            'speakerProfileImage',
             'visibility',
             'status',
             'allowComment',
@@ -367,8 +387,24 @@ class VideoUpdateSerializer(serializers.ModelSerializer):
 
         return value
 
+    def validate_speakerProfileImage(self, value):
+        if not value:
+            return value
+        if value.startswith('data:image'):
+            return value
+        if len(value) > 500:
+            raise serializers.ValidationError('출연자 프로필 이미지 URL은 500자를 초과할 수 없습니다.')
+        return value
+
     def validate(self, attrs):
         inst = self.instance
+        merged_speaker = attrs.get('speaker', inst.speaker)
+        if merged_speaker is None or str(merged_speaker).strip() == '':
+            raise serializers.ValidationError({'speaker': '출연자/강사 이름을 입력해주세요.'})
+        if 'speaker' in attrs and attrs['speaker'] is not None:
+            attrs['speaker'] = str(attrs['speaker']).strip()
+        attrs['speaker_id'] = None
+
         ct = attrs.get('contentType', inst.contentType)
         raw_st = attrs.get('sourceType', getattr(inst, 'sourceType', None))
         st = _norm_str(raw_st) if raw_st is not None else ''

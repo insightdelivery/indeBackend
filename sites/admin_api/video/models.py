@@ -50,6 +50,13 @@ class Video(models.Model):
         verbose_name='출연자/강사(콘텐츠 저자)',
     )
     speakerAffiliation = models.CharField(max_length=200, null=True, blank=True, verbose_name='출연자 소속')
+    speakerProfileImage = models.CharField(
+        max_length=500,
+        null=True,
+        blank=True,
+        verbose_name='출연자 프로필 이미지 URL',
+        help_text='S3 등 URL (관리자 크롭 업로드)',
+    )
     editor = models.CharField(max_length=100, null=True, blank=True, verbose_name='에디터')
     director = models.CharField(max_length=100, null=True, blank=True, verbose_name='디렉터')
     

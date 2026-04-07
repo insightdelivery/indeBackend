@@ -12,7 +12,6 @@ from datetime import datetime
 import logging
 
 from sites.admin_api.video.models import Video
-from sites.admin_api.video.speaker_sync import apply_video_speaker_sync
 from sites.admin_api.video.serializers import (
     VideoSerializer,
     VideoListSerializer,
@@ -167,6 +166,11 @@ class VideoListView(APIView):
                         video_data['thumbnail'], 
                         expires_in=3600
                     )
+                if video_data.get('speakerProfileImage'):
+                    video_data['speakerProfileImage'] = get_presigned_thumbnail_url(
+                        video_data['speakerProfileImage'],
+                        expires_in=3600,
+                    )
             
             # 응답 데이터 구성
             result = {
@@ -242,6 +246,10 @@ class VideoDetailView(APIView):
             # 썸네일 URL을 Presigned URL로 변환
             if data.get('thumbnail'):
                 data['thumbnail'] = get_presigned_thumbnail_url(data['thumbnail'], expires_in=3600)
+            if data.get('speakerProfileImage'):
+                data['speakerProfileImage'] = get_presigned_thumbnail_url(
+                    data['speakerProfileImage'], expires_in=3600
+                )
             
             return Response(
                 create_success_response(data, '비디오/세미나 조회 성공'),
@@ -290,9 +298,6 @@ class VideoDetailView(APIView):
                 elif thumbnail_from_request == '' or thumbnail_from_request is None:
                     update_data['thumbnail'] = None
 
-            if 'speaker_id' in update_data:
-                apply_video_speaker_sync(update_data)
-            
             serializer = VideoUpdateSerializer(video, data=update_data, partial=True)
             
             if not serializer.is_valid():
@@ -361,6 +366,10 @@ class VideoDetailView(APIView):
             # 썸네일 URL을 Presigned URL로 변환
             if data.get('thumbnail'):
                 data['thumbnail'] = get_presigned_thumbnail_url(data['thumbnail'], expires_in=3600)
+            if data.get('speakerProfileImage'):
+                data['speakerProfileImage'] = get_presigned_thumbnail_url(
+                    data['speakerProfileImage'], expires_in=3600
+                )
             
             return Response(
                 create_success_response(data, '비디오/세미나 수정 성공'),
@@ -458,7 +467,6 @@ class VideoCreateView(APIView):
                 )
             
             validated_data = serializer.validated_data.copy()
-            apply_video_speaker_sync(validated_data)
             video = Video.objects.create(**validated_data)
             
             # 썸네일이 base64인 경우 S3에 업로드
@@ -475,6 +483,10 @@ class VideoCreateView(APIView):
             # 썸네일 URL을 Presigned URL로 변환
             if data.get('thumbnail'):
                 data['thumbnail'] = get_presigned_thumbnail_url(data['thumbnail'], expires_in=3600)
+            if data.get('speakerProfileImage'):
+                data['speakerProfileImage'] = get_presigned_thumbnail_url(
+                    data['speakerProfileImage'], expires_in=3600
+                )
             
             return Response(
                 create_success_response(data, '비디오/세미나 생성 성공'),

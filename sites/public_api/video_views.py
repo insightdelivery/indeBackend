@@ -23,6 +23,14 @@ from core.cloudflare_stream import get_cloudflare_stream
 logger = logging.getLogger(__name__)
 
 
+def _normalize_seminar_row(row: dict) -> None:
+    """seminarPlan §3: 세미나는 FILE_UPLOAD·Stream만, 외부 videoUrl 노출·재생 경로 차단."""
+    if row.get("contentType") != "seminar":
+        return
+    row["sourceType"] = "FILE_UPLOAD"
+    row["videoUrl"] = None
+
+
 def _public_client_ip(request):
     xff = request.META.get("HTTP_X_FORWARDED_FOR")
     if xff:
@@ -71,9 +79,15 @@ class PublicVideoListView(APIView):
             items = list(serializer.data)
 
             for row in items:
+                _normalize_seminar_row(row)
                 if row.get("thumbnail"):
                     row["thumbnail"] = get_presigned_thumbnail_url(
                         row["thumbnail"],
+                        expires_in=3600,
+                    )
+                if row.get("speakerProfileImage"):
+                    row["speakerProfileImage"] = get_presigned_thumbnail_url(
+                        row["speakerProfileImage"],
                         expires_in=3600,
                     )
 
@@ -134,6 +148,7 @@ class PublicVideoDetailView(APIView):
 
             serializer = VideoSerializer(video)
             data = serializer.data.copy()
+            _normalize_seminar_row(data)
 
             if video.videoStreamId:
                 try:
@@ -163,6 +178,11 @@ class PublicVideoDetailView(APIView):
             if data.get("thumbnail"):
                 data["thumbnail"] = get_presigned_thumbnail_url(
                     data["thumbnail"],
+                    expires_in=3600,
+                )
+            if data.get("speakerProfileImage"):
+                data["speakerProfileImage"] = get_presigned_thumbnail_url(
+                    data["speakerProfileImage"],
                     expires_in=3600,
                 )
 
