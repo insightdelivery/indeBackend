@@ -19,6 +19,8 @@ from django.utils import timezone
 from sites.public_api.models import ContentRankingCache
 
 ARTICLE = 'ARTICLE'
+VIDEO = 'VIDEO'
+SEMINAR = 'SEMINAR'
 HOT = ContentRankingCache.RANKING_HOT
 SHARE = ContentRankingCache.RANKING_SHARE
 CATEGORY_HOT = ContentRankingCache.RANKING_CATEGORY_HOT
@@ -173,6 +175,55 @@ def _fetch_share_scores(since: datetime) -> List[Tuple[str, float]]:
         return [(row[0], _to_float(row[1])) for row in cursor.fetchall()]
 
 
+def _fetch_share_scores_for_type(content_type: str, since: datetime) -> List[Tuple[str, float]]:
+    """비디오·세미나 공유 집계(아티클 SHARE와 동일 규칙)."""
+    sql = """
+        SELECT contentCode, COALESCE(SUM(viewCount), 0) AS score
+        FROM publicUserActivityLog
+        WHERE contentType = %s
+          AND activityType = 'SHARE'
+          AND regDateTime >= %s
+        GROUP BY contentCode
+        ORDER BY score DESC, contentCode DESC
+        LIMIT 3
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(sql, [content_type, since])
+        return [(row[0], _to_float(row[1])) for row in cursor.fetchall()]
+
+
+def _published_video_codes_recent_first(api_ct: str) -> List[str]:
+    """api_ct: VIDEO | SEMINAR — 공개 Video PK 문자열 최신순."""
+    from sites.admin_api.video.models import Video
+
+    lc = 'video' if api_ct == VIDEO else 'seminar'
+    qs = (
+        Video.objects.filter(deletedAt__isnull=True, status='public', contentType=lc)
+        .order_by('-createdAt')
+        .values_list('id', flat=True)
+    )
+    return [str(pk) for pk in qs]
+
+
+def _fill_to_three_codes(
+    ranked: List[Tuple[str, float]],
+    fallback_codes: List[str],
+) -> List[Tuple[str, float]]:
+    """아티클 _fill_to_three와 동일: 상위 후보 + fallback으로 3건."""
+    need = 3
+    seen = {str(code).strip() for code, _ in ranked}
+    out: List[Tuple[str, float]] = list(ranked[:need])
+    for code in fallback_codes:
+        if len(out) >= need:
+            break
+        c = str(code).strip()
+        if not c or c in seen:
+            continue
+        seen.add(c)
+        out.append((c, 0.0))
+    return out[:need]
+
+
 def _fetch_category_hot_ranked_rows(since: datetime) -> List[Tuple[str, str, float, int]]:
     """
     카테고리별 score 상위 30 (ROW_NUMBER). MySQL 8+.
@@ -291,11 +342,12 @@ def _bulk_insert(
     ranking_type: str,
     rows: List[Tuple[str, float]],
     base_date: date,
+    content_type: str = ARTICLE,
 ) -> int:
     objs = [
         ContentRankingCache(
             ranking_type=ranking_type,
-            content_type=ARTICLE,
+            content_type=content_type,
             content_code=code,
             score=score,
             rank_order=i,
@@ -351,6 +403,18 @@ def run_content_ranking_refresh(base_date: date | None = None) -> int:
         share_ranked = _fetch_share_scores(share_since)
         share_filled = _fill_to_three(share_ranked)
         inserted += _bulk_insert(SHARE, share_filled, base_date)
+
+        share_video_ranked = _fetch_share_scores_for_type(VIDEO, share_since)
+        share_video_filled = _fill_to_three_codes(
+            share_video_ranked, _published_video_codes_recent_first(VIDEO)
+        )
+        inserted += _bulk_insert(SHARE, share_video_filled, base_date, VIDEO)
+
+        share_seminar_ranked = _fetch_share_scores_for_type(SEMINAR, share_since)
+        share_seminar_filled = _fill_to_three_codes(
+            share_seminar_ranked, _published_video_codes_recent_first(SEMINAR)
+        )
+        inserted += _bulk_insert(SHARE, share_seminar_filled, base_date, SEMINAR)
 
         cat_rows = _build_category_hot_insert_rows(hot_since)
         inserted += _bulk_insert_category_hot(cat_rows, base_date)

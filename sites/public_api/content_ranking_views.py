@@ -30,12 +30,12 @@ def _weekly_cross_list():
     ]
 
 
-def _ranking_list(ranking_type: str):
+def _ranking_list(ranking_type: str, content_type: str = 'ARTICLE'):
     d = timezone.localdate()
     qs = (
         ContentRankingCache.objects.filter(
             ranking_type=ranking_type,
-            content_type='ARTICLE',
+            content_type=content_type,
             base_date=d,
         )
         .order_by('rank_order')
@@ -72,13 +72,16 @@ class LibraryRankingHotView(APIView):
 
 
 class LibraryRankingShareView(APIView):
-    """GET /api/library/ranking/share — 당일 SHARE 아티클(캐시)"""
+    """GET /api/library/ranking/share — 당일 SHARE(캐시). ?contentType=ARTICLE|VIDEO|SEMINAR (기본 ARTICLE)"""
 
     permission_classes = []
 
     def get(self, request):
         try:
-            items = _ranking_list(ContentRankingCache.RANKING_SHARE)
+            ct = (request.query_params.get('contentType') or 'ARTICLE').strip().upper()
+            if ct not in ('ARTICLE', 'VIDEO', 'SEMINAR'):
+                ct = 'ARTICLE'
+            items = _ranking_list(ContentRankingCache.RANKING_SHARE, ct)
             return Response(
                 create_success_response({'list': items}),
                 status=status.HTTP_200_OK,

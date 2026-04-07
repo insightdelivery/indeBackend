@@ -182,6 +182,20 @@ def get_presigned_thumbnail_url(thumbnail_url: str, expires_in: int = 3600) -> O
     return thumbnail_url  # S3 URL이 아니면 그대로 반환
 
 
+def presign_video_asset_url(url: Optional[str], expires_in: int = 3600) -> Optional[str]:
+    """
+    `video/` 접두사 S3 객체 URL을 Presigned로 변환 (썸네일·첨부파일·기타 동일 규칙).
+
+    DB/JSON에 저장된 S3 URL 또는 버킷 경로에서 추출한 키가 `video/`로 시작할 때만 Presigned 생성.
+    그 외(외부 URL, data: 등)는 `get_presigned_thumbnail_url`과 동일하게 원본 유지.
+
+    공개 상세 `attachments[].url` 등에 사용 — s3Rules.md §4.1.
+    """
+    if not url:
+        return None
+    return get_presigned_thumbnail_url(url, expires_in=expires_in)
+
+
 def upload_attachment_to_s3(file_data: bytes, filename: str, video_id: int) -> Optional[str]:
     """
     첨부파일(강의 자료)을 S3에 업로드

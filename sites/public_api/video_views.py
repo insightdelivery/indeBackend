@@ -16,11 +16,33 @@ from django.core.cache import cache
 
 from sites.admin_api.video.models import Video
 from sites.admin_api.video.serializers import VideoListSerializer, VideoSerializer
-from sites.admin_api.video.utils import get_presigned_thumbnail_url
+from sites.admin_api.video.utils import get_presigned_thumbnail_url, presign_video_asset_url
 from core.utils import create_success_response, create_error_response
 from core.cloudflare_stream import get_cloudflare_stream
 
 logger = logging.getLogger(__name__)
+
+
+def _presign_public_video_attachments(data: dict) -> None:
+    """
+    비디오/세미나 상세 JSON attachments[] 각 항목의 url을 Presigned로 치환 (s3Rules.md §4.1).
+    """
+    atts = data.get("attachments")
+    if not isinstance(atts, list):
+        return
+    out = []
+    for raw in atts:
+        if not isinstance(raw, dict):
+            out.append(raw)
+            continue
+        row = dict(raw)
+        u = row.get("url")
+        if isinstance(u, str) and u.strip():
+            signed = presign_video_asset_url(u.strip(), expires_in=3600)
+            if signed:
+                row["url"] = signed
+        out.append(row)
+    data["attachments"] = out
 
 
 def _normalize_seminar_row(row: dict) -> None:
@@ -185,6 +207,7 @@ class PublicVideoDetailView(APIView):
                     data["speakerProfileImage"],
                     expires_in=3600,
                 )
+            _presign_public_video_attachments(data)
 
             return Response(
                 create_success_response(data, "비디오 조회 성공"),
