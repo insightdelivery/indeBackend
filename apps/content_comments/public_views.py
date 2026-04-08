@@ -8,6 +8,7 @@ from rest_framework import status
 
 from core.utils import create_success_response, create_error_response
 from sites.public_api.library_useractivity_views import _get_member
+from sites.public_api.models import PublicUserActivityLog
 
 from apps.content_comments.models import ContentComment
 from apps.content_comments.services import validate_content_type, get_content_gate, bump_comment_count
@@ -46,6 +47,31 @@ def _can_delete(member, c: ContentComment) -> bool:
     if bool(getattr(member, "is_staff", False)):
         return True
     return int(c.user_id) == int(member.pk) and c.depth == 1
+
+
+def _rating_for_content_by_user(ct: str, cid: int, user_ids: list[int]) -> dict[int, int]:
+    """
+    해당 콘텐츠에 대해 각 user_id의 *현재* 별점(활동 로그 RATING, 최신 reg_date_time 기준).
+    별점 API는 기존 행 삭제 후 1건 재등록이므로 보통 1행이지만, 과거 데이터 호환을 위해 최신 1건만 사용.
+    """
+    uniq = sorted({int(u) for u in user_ids if u is not None and int(u) > 0})
+    if not uniq:
+        return {}
+    code = str(int(cid))
+    out: dict[int, int] = {}
+    for log in (
+        PublicUserActivityLog.objects.filter(
+            content_type=ct,
+            content_code=code,
+            activity_type="RATING",
+            user_id__in=uniq,
+            rating_value__isnull=False,
+        ).order_by("-reg_date_time")
+    ):
+        uid = int(log.user_id)
+        if uid not in out:
+            out[uid] = int(log.rating_value)
+    return out
 
 
 class PublicCommentListCreateView(APIView):
@@ -95,6 +121,13 @@ class PublicCommentListCreateView(APIView):
         for r in replies:
             by_parent.setdefault(int(r.parent_id), []).append(r)
 
+        uid_list: list[int] = []
+        for c in roots:
+            uid_list.append(int(c.user_id))
+        for r in replies:
+            uid_list.append(int(r.user_id))
+        rating_map = _rating_for_content_by_user(ct, cid, uid_list)
+
         out = []
         for c in roots:
             out.append(
@@ -107,6 +140,7 @@ class PublicCommentListCreateView(APIView):
                     "is_mine": bool(member and int(member.pk) == int(c.user_id)),
                     "can_edit": _can_edit(member, c),
                     "can_delete": _can_delete(member, c),
+                    "rating_for_content": rating_map.get(int(c.user_id)),
                     "replies": [
                         {
                             "id": int(r.id),
@@ -118,6 +152,7 @@ class PublicCommentListCreateView(APIView):
                             "is_mine": bool(member and int(member.pk) == int(r.user_id)),
                             "can_edit": False,
                             "can_delete": _can_delete(member, r),
+                            "rating_for_content": rating_map.get(int(r.user_id)),
                         }
                         for r in by_parent.get(int(c.id), [])
                     ],

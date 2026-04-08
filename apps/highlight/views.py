@@ -76,7 +76,10 @@ class HighlightListCreateView(APIView):
             )
         validated = serializer.validated_data
         try:
-            created_list, group_id = services.create_highlights(request.user, validated)
+            max_len = services.get_highlight_max_length()
+            created_list, group_id = services.create_highlights(
+                request.user, validated, max_highlight_length=max_len
+            )
         except ValueError as e:
             return Response(
                 create_error_response(str(e)),

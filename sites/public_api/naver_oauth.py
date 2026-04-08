@@ -4,7 +4,6 @@
 - callback: code 교환 → 사용자 정보 조회 → PublicMemberShip 생성/조회 → JWT 발급 → 프론트 리다이렉트
 - 규칙: _docsRules/1_planDoc/snsNaverJoin.md
 """
-import base64
 import logging
 import os
 import urllib.parse
@@ -20,6 +19,12 @@ from core.models import AuditLog
 from sites.public_api.models import PublicMemberShip
 from sites.public_api.utils import create_public_jwt_tokens, create_oauth_pending_token
 from sites.public_api.jwt_cookies import attach_public_refresh_cookie
+from sites.public_api.oauth_redirect_state import (
+    build_oauth_state,
+    is_signup_oauth_state,
+    parse_oauth_state_for_redirect_uri,
+    sanitize_next_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +60,9 @@ class NaverRedirectView(View):
 
         redirect_uri = request.build_absolute_uri('/auth/naver/callback/')
         frontend_state = request.GET.get('state', '')
-        state_b64 = base64.urlsafe_b64encode(redirect_uri.encode()).decode().rstrip('=')
-        state = f'{frontend_state}:{state_b64}' if frontend_state else state_b64
+        next_raw = request.GET.get('next', '')
+        next_path = sanitize_next_path(next_raw) if next_raw else None
+        state = build_oauth_state(frontend_state, redirect_uri, next_path)
         params = {
             'response_type': 'code',
             'client_id': client_id,
@@ -88,16 +94,8 @@ class NaverCallbackView(View):
             return HttpResponseRedirect(f'{frontend_callback}?error=OAUTH_CONFIG')
 
         state_param = request.GET.get('state', '')
-        if ':' in state_param:
-            _, state_b64 = state_param.split(':', 1)
-        else:
-            state_b64 = state_param
-        try:
-            padding = 4 - len(state_b64) % 4
-            if padding != 4:
-                state_b64 += '=' * padding
-            redirect_uri = base64.urlsafe_b64decode(state_b64).decode()
-        except Exception:
+        redirect_uri, next_for_frontend = parse_oauth_state_for_redirect_uri(state_param)
+        if not redirect_uri:
             redirect_uri = request.build_absolute_uri('/auth/naver/callback/')
 
         token_res = requests.get(
@@ -212,13 +210,15 @@ class NaverCallbackView(View):
         )
 
         state_param = request.GET.get('state', '')
-        from_signup = state_param.split(':')[0] == 'signup' if state_param else False
+        from_signup = is_signup_oauth_state(state_param)
         query_params = {
             'access_token': tokens['access_token'],
             'expires_in': str(tokens['expires_in']),
         }
         if from_signup:
             query_params['from'] = 'signup'
+        elif next_for_frontend:
+            query_params['next'] = next_for_frontend
         query = urllib.parse.urlencode(query_params)
         response = HttpResponseRedirect(f'{frontend_callback}?{query}')
         attach_public_refresh_cookie(response, request, tokens['refresh_token'])

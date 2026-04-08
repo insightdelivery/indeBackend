@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import secrets
 import string
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from typing import Any, Dict, Optional
 
 from django.db import connection
@@ -46,6 +46,15 @@ def _is_duplicate_key(exc: BaseException) -> bool:
     return '1062' in s or 'Duplicate entry' in s or 'duplicate key' in s.lower()
 
 
+def _expiry_aware_for_compare(expiry) -> Optional[datetime]:
+    """MySQL DATETIME(naive)은 UTC로 간주해 now()와 동일 기준으로 비교."""
+    if expiry is None:
+        return None
+    if timezone.is_aware(expiry):
+        return expiry
+    return timezone.make_aware(expiry, dt_timezone.utc)
+
+
 def ensure_share_link(user_id: int, content_type: str, content_id: int) -> dict:
     """
     §5.3: 미만료면 반환만, 만료면 UPDATE(short_code+share_token), 없으면 INSERT.
@@ -61,21 +70,6 @@ def ensure_share_link(user_id: int, content_type: str, content_id: int) -> dict:
             SELECT id, short_code, expired_at
             FROM content_share_link
             WHERE user_id = %s AND content_type = %s AND content_id = %s
-              AND expired_at > UTC_TIMESTAMP()
-            """,
-            [user_id, ct, content_id],
-        )
-        active = cursor.fetchone()
-    if active:
-        _id, short_code, expired_at = active
-        return {'mode': 'active', 'short_code': short_code, 'expired_at': expired_at}
-
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id
-            FROM content_share_link
-            WHERE user_id = %s AND content_type = %s AND content_id = %s
             """,
             [user_id, ct, content_id],
         )
@@ -85,7 +79,10 @@ def ensure_share_link(user_id: int, content_type: str, content_id: int) -> dict:
     new_expired = now + ttl
 
     if row:
-        link_id = row[0]
+        link_id, short_code, expired_at = row
+        exp_cmp = _expiry_aware_for_compare(expired_at)
+        if exp_cmp is not None and exp_cmp > now:
+            return {'mode': 'active', 'short_code': short_code, 'expired_at': expired_at}
         last_err = None
         for _ in range(MAX_SHORT_RETRIES):
             code = _random_short_code()

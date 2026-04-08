@@ -2,8 +2,25 @@
 Article Highlight 비즈니스 로직 (articleHightlightPlan.md 15.4 겹침 검사 등)
 """
 from django.db import transaction
+
+from core.models import SysCodeManager
 from sites.admin_api.articles.models import Article
 from .models import ArticleHighlight
+
+DEFAULT_HIGHLIGHT_MAX_LENGTH = 500
+
+
+def get_highlight_max_length() -> int:
+    """SYS26312B005 — 하이라이트 최대 글자 수 (sysCodeVal). 없으면 기본값."""
+    row = SysCodeManager.objects.filter(sysCodeSid='SYS26312B005', sysCodeUse='Y').first()
+    if row and row.sysCodeVal:
+        try:
+            n = int(str(row.sysCodeVal).strip())
+            if n > 0:
+                return n
+        except ValueError:
+            pass
+    return DEFAULT_HIGHLIGHT_MAX_LENGTH
 
 
 def _check_overlap(user, article_id: int, paragraph_index: int, start_offset: int, end_offset: int) -> bool:
@@ -48,7 +65,7 @@ def create_highlights(user, payload_list: list, max_highlight_length: int | None
                 continue
             text = (p.get('highlightText') or '')[:65535]
             if max_highlight_length is not None and len(text) > max_highlight_length:
-                raise ValueError(f'highlight_text 길이가 최대 {max_highlight_length}자를 초과합니다.')
+                raise ValueError(f'하이라이트는 {max_highlight_length}자 까지 가능합니다.')
             if _check_overlap(
                 user,
                 aid,
