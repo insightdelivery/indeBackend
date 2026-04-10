@@ -584,6 +584,40 @@ class MeView(APIView):
         return Response(_user_response(member), status=status.HTTP_200_OK)
 
 
+class VerifyProfilePasswordView(APIView):
+    """
+    마이페이지 회원정보 수정 전 본인 확인 — JWT(access) 필수, 비밀번호만 검증.
+    소셜 가입(비밀번호 없음)은 skipped=True 로 성공 처리(프론트에서 수정 폼 바로 허용).
+    비밀번호 불일치 시 400 (401 아님 — axios 인터셉터 토큰 갱신 루프 방지).
+    """
+
+    permission_classes = [AllowAny]
+
+    def _get_member(self, request):
+        token = get_token_from_request(request)
+        payload = verify_jwt_token(token, token_type='access') if token else None
+        if not payload:
+            return None
+        user_id = payload.get('user_id')
+        try:
+            return PublicMemberShip.objects.get(member_sid=int(user_id), is_active=True)
+        except (PublicMemberShip.DoesNotExist, ValueError, TypeError):
+            return None
+
+    def post(self, request):
+        member = self._get_member(request)
+        if not member:
+            return Response({'detail': '인증이 필요합니다.'}, status=status.HTTP_401_UNAUTHORIZED)
+        if member.joined_via != 'LOCAL':
+            return Response({'ok': True, 'skipped': True}, status=status.HTTP_200_OK)
+        password = (request.data.get('password') or '').strip()
+        if not password:
+            return Response({'error': '비밀번호를 입력해 주세요.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not member.check_password(password):
+            return Response({'error': '비밀번호가 일치하지 않습니다.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'ok': True}, status=status.HTTP_200_OK)
+
+
 class ProfileCompleteView(APIView):
     """부가정보 완료 (구글 회원가입 후 등) - PUT /profile/complete/"""
     permission_classes = [AllowAny]
