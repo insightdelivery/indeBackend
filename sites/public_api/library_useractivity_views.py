@@ -427,8 +427,34 @@ class LibraryUserActivityRating(APIView):
 
 
 class LibraryUserActivityBookmark(APIView):
-    """POST: 북마크 추가, DELETE: 북마크 취소"""
+    """GET: 내 북마크 여부, POST: 북마크 추가, DELETE: 북마크 취소"""
     permission_classes = []
+
+    def get(self, request):
+        """GET ?contentType=&contentCode= — 로그인 사용자가 해당 콘텐츠를 북마크했는지"""
+        member = _get_member(request)
+        if not member:
+            return Response(
+                create_error_response('인증이 필요합니다.', '01'),
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        content_type = (request.query_params.get('contentType') or '').strip().upper()
+        content_code = (request.query_params.get('contentCode') or '').strip()
+        if content_type not in CONTENT_TYPES or not content_code:
+            return Response(
+                create_error_response('contentType, contentCode 쿼리가 필요합니다.'),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        bookmarked = PublicUserActivityLog.objects.filter(
+            user_id=member.pk,
+            content_type=content_type,
+            content_code=content_code,
+            activity_type=ACTIVITY_BOOKMARK,
+        ).exists()
+        return Response(
+            create_success_response({'bookmarked': bookmarked}),
+            status=status.HTTP_200_OK,
+        )
 
     def post(self, request):
         member = _get_member(request)
