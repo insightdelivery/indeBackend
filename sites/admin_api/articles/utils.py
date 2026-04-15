@@ -15,17 +15,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def normalize_empty_p_tags(html_content: str) -> str:
-    """
-    본문 HTML에서 비어 있는 p 태그(<p></p>, <p> </p> 등)를 <br />로 치환.
-    DB 저장 전 호출하여 저장값을 통일.
-    """
-    if not html_content or not isinstance(html_content, str):
-        return html_content
-    # <p></p>, <p> </p>, <p>\n</p> 등 빈/공백만 있는 p 태그 → <br />
-    return re.sub(r'<p>\s*</p>', '<br />', html_content, flags=re.IGNORECASE)
-
-
 def get_article_image_path(article_id: int, filename: str = None) -> str:
     """
     아티클 이미지 저장 경로 생성
