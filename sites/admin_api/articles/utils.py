@@ -94,7 +94,10 @@ def upload_base64_image_to_s3(
         if image_type == 'thumbnail':
             filename = f"thumbnail.{extension}"
         else:
-            filename = f"image_{image_index}.{extension}"
+            # 수정 요청마다 index가 0부터 다시 시작하므로, 고정 파일명(image_0 등)을 쓰면
+            # 기존 본문 이미지 키를 덮어쓸 수 있다. 본문 이미지는 항상 고유 키를 사용한다.
+            unique_suffix = uuid.uuid4().hex
+            filename = f"image_{image_index}_{unique_suffix}.{extension}"
         
         # S3 경로 생성
         s3_key = get_article_image_path(article_id, filename)
