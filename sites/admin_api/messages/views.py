@@ -27,6 +27,7 @@ from .models import (
     MessageTemplate,
 )
 from .aligo_sms import send_mass_with_aligo, fetch_sms_list_all
+from .aligo_kakao import send_alimtalk_with_aligo
 from .email_dispatch import send_email_batch_details
 from .serializers import (
     KakaoTemplateSerializer,
@@ -255,6 +256,109 @@ class MessageBatchListCreateView(APIView):
                     batch.is_processed = True
                     batch.status = MessageBatch.STATUS_FAILED
                     batch.completed_at = now
+            elif batch.type == MessageBatch.TYPE_KAKAO and valid_details:
+                db_valid_details = list(
+                    MessageDetail.objects.filter(batch=batch, status=MessageDetail.STATUS_SUCCESS).order_by("id")
+                )
+                tpl_row = None
+                tid = None
+                for d in db_valid_details:
+                    if d.template_id:
+                        tid = d.template_id
+                        break
+                if tid is None and isinstance(batch.request_snapshot, dict):
+                    raw_tid = batch.request_snapshot.get("templateId")
+                    try:
+                        tid = int(raw_tid) if raw_tid is not None and str(raw_tid).strip() != "" else None
+                    except (TypeError, ValueError):
+                        tid = None
+                if tid is not None:
+                    tpl_row = KakaoTemplate.objects.filter(id=tid).first()
+                reserve_at = timezone.localtime(scheduled_at) if is_scheduled_request and scheduled_at else None
+                if not tpl_row:
+                    for d in db_valid_details:
+                        d.status = MessageDetail.STATUS_FAIL
+                        d.error_reason = "missing_template"
+                        d.save(update_fields=["status", "error_reason", "updated_at"])
+                    batch.success_count = 0
+                    batch.fail_count = len(db_valid_details)
+                    batch.is_processed = True
+                    batch.status = MessageBatch.STATUS_FAILED
+                    batch.completed_at = now
+                    batch.api_response_logs = []
+                else:
+                    senderkey = (getattr(settings, "ALIGO_KAKAO_SENDERKEY", "") or "").strip()
+                    subj_base = (batch.title or "").strip() or (tpl_row.template_name or "알림")[:200]
+                    items = [
+                        {
+                            "phone": d.receiver_phone,
+                            "recvname": d.receiver_name or "",
+                            "subject": subj_base,
+                            "message": (d.final_content or batch.content or "").strip(),
+                        }
+                        for d in db_valid_details
+                    ]
+                    send_result = send_alimtalk_with_aligo(
+                        batch.sender,
+                        senderkey,
+                        tpl_row.template_code,
+                        items,
+                        reserve_at=reserve_at,
+                    )
+                    batch.api_response_logs = [send_result.get("raw")] if send_result.get("raw") is not None else []
+                    if send_result.get("ok"):
+                        success_cnt = int(send_result.get("success_cnt") or 0)
+                        mid = str(send_result.get("mid") or "")
+                        batch.result_snapshot = {
+                            "provider": "aligo_kakao",
+                            "tpl_code": tpl_row.template_code,
+                            "mid": mid,
+                            "is_reserved": is_scheduled_request,
+                        }
+                        for idx, d in enumerate(db_valid_details):
+                            if idx < success_cnt:
+                                d.status = MessageDetail.STATUS_SUCCESS
+                                d.external_code = mid
+                                d.external_message = str(send_result.get("message") or "")
+                                d.error_reason = ""
+                                if not is_scheduled_request:
+                                    d.sent_at = now
+                            else:
+                                d.status = MessageDetail.STATUS_FAIL
+                                d.error_reason = "provider_error"
+                                d.external_message = str(send_result.get("message") or "")
+                            d.save(
+                                update_fields=[
+                                    "status",
+                                    "external_code",
+                                    "external_message",
+                                    "sent_at",
+                                    "error_reason",
+                                    "updated_at",
+                                ]
+                            )
+                        batch.success_count = success_cnt
+                        batch.fail_count = max(0, len(db_valid_details) - success_cnt)
+                        batch.is_processed = True
+                        if is_scheduled_request:
+                            batch.status = MessageBatch.STATUS_SCHEDULED
+                            batch.completed_at = None
+                        else:
+                            batch.status = (
+                                MessageBatch.STATUS_COMPLETED if batch.fail_count == 0 else MessageBatch.STATUS_FAILED
+                            )
+                            batch.completed_at = now
+                    else:
+                        for d in db_valid_details:
+                            d.status = MessageDetail.STATUS_FAIL
+                            d.error_reason = "provider_error"
+                            d.external_message = str(send_result.get("message") or "알리고 알림톡 발송 실패")
+                            d.save(update_fields=["status", "external_message", "error_reason", "updated_at"])
+                        batch.success_count = 0
+                        batch.fail_count = len(db_valid_details)
+                        batch.is_processed = True
+                        batch.status = MessageBatch.STATUS_FAILED
+                        batch.completed_at = now
             elif batch.type == MessageBatch.TYPE_EMAIL and valid_details:
                 if is_scheduled_request:
                     batch.success_count = len(valid_details)
@@ -279,7 +383,7 @@ class MessageBatchListCreateView(APIView):
                         else MessageBatch.STATUS_FAILED
                     )
             else:
-                # 카카오 등: 요청 저장만 (실제 발송 연동 전)
+                # SMS·카카오·이메일 외이거나, 유효 수신자 0건 등 — 외부 발송 없이 집계만
                 batch.success_count = len(valid_details)
                 batch.fail_count = 0
                 if is_scheduled_request:
@@ -376,8 +480,8 @@ class MessageBatchResendFailedView(APIView):
             MessageDetail.objects.bulk_create(clones)
             new_batch.excluded_count = 0
 
+            now = timezone.now()
             if source.type == MessageBatch.TYPE_EMAIL:
-                now = timezone.now()
                 out = send_email_batch_details(new_batch, now=now)
                 new_batch.success_count = out["success"]
                 new_batch.fail_count = out["fail"]
@@ -390,12 +494,169 @@ class MessageBatchResendFailedView(APIView):
                     if out["fail"] == 0
                     else MessageBatch.STATUS_FAILED
                 )
+            elif source.type == MessageBatch.TYPE_SMS:
+                db_valid_details = list(
+                    MessageDetail.objects.filter(batch=new_batch, status=MessageDetail.STATUS_SUCCESS).order_by("id")
+                )
+                phones = [d.receiver_phone for d in db_valid_details]
+                messages = [d.final_content or new_batch.content for d in db_valid_details]
+                send_result = send_mass_with_aligo(new_batch.sender, new_batch.title, phones, messages, reserve_at=None)
+                new_batch.api_response_logs = [send_result.get("raw")] if send_result.get("raw") is not None else []
+                if send_result.get("ok"):
+                    msg_id = str(send_result.get("msg_id") or "")
+                    new_batch.result_snapshot = {
+                        "provider": "aligo",
+                        "msg_id": msg_id,
+                        "msg_type": str(send_result.get("msg_type") or ""),
+                        "resend_from": source.id,
+                    }
+                    success_cnt = int(send_result.get("success_cnt") or 0)
+                    for idx, d in enumerate(db_valid_details):
+                        if idx < success_cnt:
+                            d.status = MessageDetail.STATUS_SUCCESS
+                            d.external_code = msg_id
+                            d.external_message = str(send_result.get("message") or "")
+                            d.error_reason = ""
+                            d.sent_at = now
+                        else:
+                            d.status = MessageDetail.STATUS_FAIL
+                            d.error_reason = "provider_error"
+                            d.external_message = str(send_result.get("message") or "")
+                        d.save(
+                            update_fields=[
+                                "status",
+                                "external_code",
+                                "external_message",
+                                "sent_at",
+                                "error_reason",
+                                "updated_at",
+                            ]
+                        )
+                    new_batch.success_count = success_cnt
+                    new_batch.fail_count = max(0, len(db_valid_details) - success_cnt)
+                    new_batch.is_processed = True
+                    new_batch.completed_at = now
+                    new_batch.status = (
+                        MessageBatch.STATUS_COMPLETED
+                        if new_batch.fail_count == 0
+                        else MessageBatch.STATUS_FAILED
+                    )
+                else:
+                    for d in db_valid_details:
+                        d.status = MessageDetail.STATUS_FAIL
+                        d.error_reason = "provider_error"
+                        d.external_message = str(send_result.get("message") or "알리고 발송 실패")
+                        d.save(update_fields=["status", "external_message", "error_reason", "updated_at"])
+                    new_batch.success_count = 0
+                    new_batch.fail_count = len(db_valid_details)
+                    new_batch.is_processed = True
+                    new_batch.status = MessageBatch.STATUS_FAILED
+                    new_batch.completed_at = now
+            elif source.type == MessageBatch.TYPE_KAKAO:
+                db_valid_details = list(
+                    MessageDetail.objects.filter(batch=new_batch, status=MessageDetail.STATUS_SUCCESS).order_by("id")
+                )
+                tpl_row = None
+                tid = None
+                for d in db_valid_details:
+                    if d.template_id:
+                        tid = d.template_id
+                        break
+                if tid is None and isinstance(snap, dict):
+                    raw_tid = snap.get("templateId")
+                    try:
+                        tid = int(raw_tid) if raw_tid is not None and str(raw_tid).strip() != "" else None
+                    except (TypeError, ValueError):
+                        tid = None
+                if tid is not None:
+                    tpl_row = KakaoTemplate.objects.filter(id=tid).first()
+                if not tpl_row:
+                    for d in db_valid_details:
+                        d.status = MessageDetail.STATUS_FAIL
+                        d.error_reason = "missing_template"
+                        d.save(update_fields=["status", "error_reason", "updated_at"])
+                    new_batch.success_count = 0
+                    new_batch.fail_count = len(db_valid_details)
+                    new_batch.is_processed = True
+                    new_batch.status = MessageBatch.STATUS_FAILED
+                    new_batch.completed_at = now
+                    new_batch.api_response_logs = []
+                else:
+                    senderkey = (getattr(settings, "ALIGO_KAKAO_SENDERKEY", "") or "").strip()
+                    subj_base = (new_batch.title or "").strip() or (tpl_row.template_name or "알림")[:200]
+                    items = [
+                        {
+                            "phone": d.receiver_phone,
+                            "recvname": d.receiver_name or "",
+                            "subject": subj_base,
+                            "message": (d.final_content or new_batch.content or "").strip(),
+                        }
+                        for d in db_valid_details
+                    ]
+                    send_result = send_alimtalk_with_aligo(
+                        new_batch.sender,
+                        senderkey,
+                        tpl_row.template_code,
+                        items,
+                        reserve_at=None,
+                    )
+                    new_batch.api_response_logs = [send_result.get("raw")] if send_result.get("raw") is not None else []
+                    if send_result.get("ok"):
+                        success_cnt = int(send_result.get("success_cnt") or 0)
+                        mid = str(send_result.get("mid") or "")
+                        new_batch.result_snapshot = {
+                            "provider": "aligo_kakao",
+                            "tpl_code": tpl_row.template_code,
+                            "mid": mid,
+                            "resend_from": source.id,
+                        }
+                        for idx, d in enumerate(db_valid_details):
+                            if idx < success_cnt:
+                                d.status = MessageDetail.STATUS_SUCCESS
+                                d.external_code = mid
+                                d.external_message = str(send_result.get("message") or "")
+                                d.error_reason = ""
+                                d.sent_at = now
+                            else:
+                                d.status = MessageDetail.STATUS_FAIL
+                                d.error_reason = "provider_error"
+                                d.external_message = str(send_result.get("message") or "")
+                            d.save(
+                                update_fields=[
+                                    "status",
+                                    "external_code",
+                                    "external_message",
+                                    "sent_at",
+                                    "error_reason",
+                                    "updated_at",
+                                ]
+                            )
+                        new_batch.success_count = success_cnt
+                        new_batch.fail_count = max(0, len(db_valid_details) - success_cnt)
+                        new_batch.is_processed = True
+                        new_batch.completed_at = now
+                        new_batch.status = (
+                            MessageBatch.STATUS_COMPLETED
+                            if new_batch.fail_count == 0
+                            else MessageBatch.STATUS_FAILED
+                        )
+                    else:
+                        for d in db_valid_details:
+                            d.status = MessageDetail.STATUS_FAIL
+                            d.error_reason = "provider_error"
+                            d.external_message = str(send_result.get("message") or "알리고 알림톡 발송 실패")
+                            d.save(update_fields=["status", "external_message", "error_reason", "updated_at"])
+                        new_batch.success_count = 0
+                        new_batch.fail_count = len(db_valid_details)
+                        new_batch.is_processed = True
+                        new_batch.status = MessageBatch.STATUS_FAILED
+                        new_batch.completed_at = now
             else:
                 new_batch.success_count = len(clones)
                 new_batch.fail_count = 0
                 new_batch.is_processed = True
                 new_batch.status = MessageBatch.STATUS_COMPLETED
-                new_batch.completed_at = timezone.now()
+                new_batch.completed_at = now
 
             new_batch.save()
 

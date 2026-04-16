@@ -7,6 +7,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.filters import SearchFilter, OrderingFilter
+from datetime import datetime, time, timedelta
+
 from django.utils import timezone
 from django.db.models import Avg, Count, Max, Q
 
@@ -32,7 +34,7 @@ from .serializers import (
 class PublicMemberPagination(PageNumberPagination):
     page_size = 20
     page_size_query_param = "page_size"
-    max_page_size = 100
+    max_page_size = 250
 
 
 class AdminPublicMemberViewSet(viewsets.ModelViewSet):
@@ -54,9 +56,51 @@ class AdminPublicMemberViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        status_filter = self.request.query_params.get("status")
-        if status_filter in (PublicMemberShip.STATUS_ACTIVE, PublicMemberShip.STATUS_WITHDRAWN, PublicMemberShip.STATUS_WITHDRAW_REQUEST):
-            qs = qs.filter(status=status_filter)
+        request = self.request
+        scope = (request.query_params.get("recipient_scope") or "").strip().lower()
+
+        if scope == "marketing_agree":
+            qs = qs.filter(
+                newsletter_agree=True,
+                status=PublicMemberShip.STATUS_ACTIVE,
+            )
+        elif scope == "all":
+            pass
+        elif scope == "join_date":
+            jf = (request.query_params.get("join_date_from") or "").strip()
+            jt = (request.query_params.get("join_date_to") or "").strip()
+            if not jf and not jt:
+                qs = qs.none()
+            else:
+                if jf:
+                    try:
+                        d_from = datetime.strptime(jf, "%Y-%m-%d").date()
+                        start_dt = timezone.make_aware(datetime.combine(d_from, time.min))
+                        qs = qs.filter(created_at__gte=start_dt)
+                    except ValueError:
+                        pass
+                if jt:
+                    try:
+                        d_to = datetime.strptime(jt, "%Y-%m-%d").date()
+                        end_dt = timezone.make_aware(datetime.combine(d_to, time.max))
+                        qs = qs.filter(created_at__lte=end_dt)
+                    except ValueError:
+                        pass
+        elif scope == "inactive_90":
+            cutoff = timezone.now() - timedelta(days=90)
+            qs = qs.filter(status=PublicMemberShip.STATUS_ACTIVE).filter(
+                Q(last_login__isnull=True) | Q(last_login__lt=cutoff)
+            )
+        elif scope == "withdrawn":
+            qs = qs.filter(status=PublicMemberShip.STATUS_WITHDRAWN)
+        else:
+            status_filter = request.query_params.get("status")
+            if status_filter in (
+                PublicMemberShip.STATUS_ACTIVE,
+                PublicMemberShip.STATUS_WITHDRAWN,
+                PublicMemberShip.STATUS_WITHDRAW_REQUEST,
+            ):
+                qs = qs.filter(status=status_filter)
         return qs
 
     def get_serializer_class(self):

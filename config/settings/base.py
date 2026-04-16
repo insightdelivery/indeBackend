@@ -276,6 +276,9 @@ ADMIN_JWT_REFRESH_COOKIE_SAMESITE = os.getenv('ADMIN_JWT_REFRESH_COOKIE_SAMESITE
 ALIGO_API_KEY = (os.getenv("ALIGO_API_KEY") or "").strip()
 ALIGO_USER_ID = (os.getenv("ALIGO_USER_ID") or "").strip()
 ALIGO_SENDER = (os.getenv("ALIGO_SENDER") or "").strip()
+# 카카오 알림톡(알리고 akv10) — 발신프로필 키·테스트모드
+ALIGO_KAKAO_SENDERKEY = (os.getenv("ALIGO_KAKAO_SENDERKEY") or "").strip()
+ALIGO_KAKAO_TEST_MODE = os.getenv("ALIGO_KAKAO_TEST_MODE", "N").strip().upper() in ("Y", "1", "YES", "TRUE")
 SMS_SERVICE_NAME = (os.getenv("SMS_SERVICE_NAME") or "INDE").strip()
 # DEBUG이고 SMS_SKIP_SEND=1 일 때만: SMS 미발송, 검증 로직은 동일(로그에 코드 출력)
 SMS_SKIP_SEND = DEBUG and os.getenv("SMS_SKIP_SEND", "").lower() in ("1", "true", "yes")
