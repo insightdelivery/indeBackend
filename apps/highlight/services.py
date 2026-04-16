@@ -7,6 +7,12 @@ from core.models import SysCodeManager
 from sites.admin_api.articles.models import Article
 from .models import ArticleHighlight
 
+
+def sync_article_highlight_count(article_id: int) -> None:
+    """article_highlight 행 수를 Article.highlightCount에 반영."""
+    n = ArticleHighlight.objects.filter(article_id=article_id).count()
+    Article.objects.filter(id=article_id).update(highlightCount=n)
+
 DEFAULT_HIGHLIGHT_MAX_LENGTH = 500
 
 
@@ -105,4 +111,6 @@ def create_highlights(user, payload_list: list, max_highlight_length: int | None
                 obj.save(update_fields=['highlight_group_id'])
             created_list.append(obj)
 
+    if article_id:
+        sync_article_highlight_count(int(article_id))
     return created_list, first_id

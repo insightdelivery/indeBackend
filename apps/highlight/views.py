@@ -127,7 +127,9 @@ class HighlightDeleteView(APIView):
                 create_error_response('본인 하이라이트만 삭제할 수 있습니다.', '03'),
                 status=status.HTTP_403_FORBIDDEN,
             )
+        aid = int(obj.article_id)
         obj.delete()
+        services.sync_article_highlight_count(aid)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -149,5 +151,9 @@ class HighlightGroupDeleteView(APIView):
                 create_error_response('해당 그룹을 찾을 수 없거나 권한이 없습니다.', '04'),
                 status=status.HTTP_404_NOT_FOUND,
             )
+        first = qs.first()
+        aid = int(first.article_id) if first else 0
         qs.delete()
+        if aid:
+            services.sync_article_highlight_count(aid)
         return Response(status=status.HTTP_204_NO_CONTENT)

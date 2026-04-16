@@ -21,7 +21,7 @@ SITE_MAP = {
     "localhost:8000": {
         "slug": "admin_api",
         "urlconf": "sites.admin_api.urls",
-        "cors": ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3001", "https://dev.inde.kr", "http://dev.inde.kr","http://adminlocal.inde.kr","http://local.inde.kr"],
+        "cors": ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3001", "https://dev.inde.kr", "http://dev.inde.kr","http://adminlocal.inde.kr","http://local.inde.kr","http://local.inde.kr:3000","http://adminlocal.inde.kr:3000"],
         "media_prefix": "local",
     },
     "localhost:8001": {
@@ -33,7 +33,7 @@ SITE_MAP = {
     "127.0.0.1:8000": {
         "slug": "admin_api",
         "urlconf": "sites.admin_api.urls",
-        "cors": ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3001", "https://dev.inde.kr", "http://dev.inde.kr","http://adminlocal.inde.kr","http://local.inde.kr"],
+        "cors": ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3001", "https://dev.inde.kr", "http://dev.inde.kr","http://adminlocal.inde.kr","http://local.inde.kr","http://local.inde.kr:3000","http://adminlocal.inde.kr:3000"],
         "media_prefix": "local",
     },
     "127.0.0.1:8001": {
@@ -45,7 +45,7 @@ SITE_MAP = {
     "admin-local.inde.kr:8000": {
         "slug": "admin_api",
         "urlconf": "sites.admin_api.urls",
-        "cors": ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3001", "https://dev.inde.kr", "http://dev.inde.kr","http://adminlocal.inde.kr","http://local.inde.kr"],
+        "cors": ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3001", "https://dev.inde.kr", "http://dev.inde.kr","http://adminlocal.inde.kr","http://local.inde.kr","http://local.inde.kr:3000","http://adminlocal.inde.kr:3000"],
         "media_prefix": "local",
     },
     # /etc/hosts — admin API 로컬 호스트 (localhost:8000 과 동일 사이트)
@@ -60,6 +60,8 @@ SITE_MAP = {
             "http://dev.inde.kr",
             "http://adminlocal.inde.kr",
             "http://local.inde.kr",
+            "http://local.inde.kr:3000",
+            "http://adminlocal.inde.kr:3000",
             "http://admin-apilocal.inde.kr:3000",
             "http://admin-apilocal.inde.kr",
         ],

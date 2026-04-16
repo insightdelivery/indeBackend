@@ -51,6 +51,10 @@ def get_content_gate(content_type: ContentType, content_id: int) -> ContentGate:
 
 @transaction.atomic
 def bump_comment_count(content_type: ContentType, content_id: int, delta: int) -> None:
+    """
+    콘텐츠별 댓글 수(깊이 1 루트 댓글만)를 F()로 증감.
+    대댓글(depth 2)·관리자 대댓글 경로에서는 호출하지 않는다.
+    """
     if delta == 0:
         return
     if content_type == "ARTICLE":

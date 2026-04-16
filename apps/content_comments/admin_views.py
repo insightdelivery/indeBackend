@@ -179,7 +179,7 @@ class AdminCommentListByContentView(APIView):
                 depth=2,
                 comment_text=text,
             )
-            bump_comment_count(parent.content_type, int(parent.content_id), 1)
+            # 관리자 대댓글은 commentCount 증가 없음
 
         return Response(create_success_response({"id": int(c.id)}, "대댓글 작성 성공"), status=status.HTTP_200_OK)
 
@@ -222,7 +222,9 @@ class AdminCommentDetailView(APIView):
                 return Response(create_error_response("댓글을 찾을 수 없습니다.", "01"), status=status.HTTP_404_NOT_FOUND)
             if not locked.is_deleted:
                 locked.soft_delete(by=None)
-                bump_comment_count(locked.content_type, int(locked.content_id), -1)
+                # 관리자 대댓글(depth 2) 삭제는 차감 없음. 루트만 차감.
+                if int(locked.depth) == 1:
+                    bump_comment_count(locked.content_type, int(locked.content_id), -1)
 
         return Response(create_success_response({"id": int(c.id)}, "댓글 삭제 성공"), status=status.HTTP_200_OK)
 

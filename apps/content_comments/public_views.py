@@ -236,7 +236,8 @@ class PublicCommentListCreateView(APIView):
                     depth=1,
                     comment_text=text,
                 )
-            bump_comment_count(ct, cid, 1)
+                # 깊이 1(루트 댓글)만 카운트. 대댓글·관리자 대댓글은 bump 하지 않음.
+                bump_comment_count(ct, cid, 1)
 
         return Response(
             create_success_response(
@@ -308,7 +309,9 @@ class PublicCommentDetailView(APIView):
                 return Response(create_error_response("댓글을 찾을 수 없습니다.", "01"), status=status.HTTP_404_NOT_FOUND)
             if not locked.is_deleted:
                 locked.soft_delete(by=member)
-                bump_comment_count(locked.content_type, int(locked.content_id), -1)
+                # 루트 댓글(depth 1)만 카운트에서 차감. 대댓글 삭제는 bump 없음.
+                if int(locked.depth) == 1:
+                    bump_comment_count(locked.content_type, int(locked.content_id), -1)
 
         return Response(create_success_response({"id": int(c.id)}, "댓글 삭제 성공"), status=status.HTTP_200_OK)
 
