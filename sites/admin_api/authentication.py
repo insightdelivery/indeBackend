@@ -15,7 +15,14 @@ class AdminJWTAuthentication(BaseAuthentication):
     JWT 토큰 기반 인증 클래스
     Authorization 헤더에서 Bearer 토큰을 추출하여 사용자 인증
     """
-    
+
+    def authenticate_header(self, request):
+        """
+        WWW-Authenticate 스킴 문자열. DRF는 이 값이 없으면 AuthenticationFailed를 403으로 바꾼다.
+        Bearer 스킴을 명시해 만료·무효 토큰 시 HTTP 401이 유지되도록 한다.
+        """
+        return 'Bearer'
+
     def authenticate(self, request):
         """
         JWT 토큰을 검증하고 사용자를 반환

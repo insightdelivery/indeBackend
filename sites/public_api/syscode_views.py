@@ -37,12 +37,19 @@ class SysCodeByParentView(APIView):
 
 class SysCodeListByParentsSidView(APIView):
     """
-    GET /systemmanage/syscode?sysCodeParentsSid= — 관리자 list 쿼리명과 동일(단일 부모의 직계 자식).
+    GET /systemmanage/syscode
+    - ?sysCodeSid= — 해당 sid **본인 1행**만 (직계 자식 아님). 사용 Y만, 없으면 [].
+    - ?sysCodeParentsSid= — 관리자 list 쿼리명과 동일(단일 부모의 직계 자식).
     parent 미지정·빈 값이면 빈 배열 (루트 전체 노출 방지).
     """
     permission_classes = [AllowAny]
 
     def get(self, request):
+        single_sid = (request.query_params.get('sysCodeSid') or '').strip()
+        if single_sid:
+            item = SysCodeManager.objects.filter(sysCodeSid=single_sid, sysCodeUse='Y').first()
+            return Response([_item_to_dict(item)] if item else [])
+
         parent_id = (request.query_params.get('sysCodeParentsSid') or '').strip()
         if not parent_id:
             return Response([])
