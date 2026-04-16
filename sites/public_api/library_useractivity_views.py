@@ -5,7 +5,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from django.db import connection
+from django.db import connection, transaction
 from django.db.models import Avg, Count, Max, Sum
 from django.utils import timezone
 
@@ -17,6 +17,7 @@ from sites.admin_api.video.models import Video
 from sites.admin_api.video.utils import get_presigned_thumbnail_url as video_presigned_thumbnail
 from sites.public_api.models import PublicMemberShip, PublicUserActivityLog
 from sites.public_api.utils import get_token_from_request, verify_jwt_token
+from sites.public_api.content_rating_sync import sync_content_rating_aggregate
 
 DELETED_CONTENT_TITLE = '삭제된 콘텐츠입니다'
 
@@ -406,20 +407,23 @@ class LibraryUserActivityRating(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         now = timezone.now()
-        PublicUserActivityLog.objects.filter(
-            user_id=member.pk,
-            content_type=content_type,
-            content_code=content_code,
-            activity_type=ACTIVITY_RATING,
-        ).delete()
-        PublicUserActivityLog.objects.create(
-            user_id=member.pk,
-            content_type=content_type,
-            content_code=content_code,
-            activity_type=ACTIVITY_RATING,
-            rating_value=rating,
-            reg_date=now.date(),
-        )
+        cc = str(content_code).strip()
+        with transaction.atomic():
+            PublicUserActivityLog.objects.filter(
+                user_id=member.pk,
+                content_type=content_type,
+                content_code=cc,
+                activity_type=ACTIVITY_RATING,
+            ).delete()
+            PublicUserActivityLog.objects.create(
+                user_id=member.pk,
+                content_type=content_type,
+                content_code=cc,
+                activity_type=ACTIVITY_RATING,
+                rating_value=rating,
+                reg_date=now.date(),
+            )
+            sync_content_rating_aggregate(content_type, cc)
         return Response(
             create_success_response({'result': 'ok'}),
             status=status.HTTP_200_OK,
