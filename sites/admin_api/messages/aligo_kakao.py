@@ -12,8 +12,11 @@ from typing import Any
 import requests
 from django.conf import settings
 
+from .aligo_log import log_aligo_form_outbound
+
 
 ALIGO_KAKAO_ALIMTALK_SEND_URL = "https://kakaoapi.aligo.in/akv10/alimtalk/send/"
+ALIGO_KAKAO_HISTORY_DETAIL_URL = "https://kakaoapi.aligo.in/akv10/history/detail/"
 
 
 def send_alimtalk_with_aligo(
@@ -23,11 +26,17 @@ def send_alimtalk_with_aligo(
     items: list[dict[str, str]],
     reserve_at: datetime | None = None,
     failover: str = "N",
+    batch_emtitle: str | None = None,
+    batch_button: str | None = None,
 ) -> dict[str, Any]:
     """
     알리고 알림톡 다건(최대 500) 동시 요청.
 
-    items 각 원소: phone(필수), subject(필수), message(필수), recvname(선택)
+    items 각 원소: phone(필수), subject(필수), message(필수), recvname(선택),
+    emtitle·button(선택, 행 단위 — 없으면 batch_emtitle / batch_button 사용).
+
+    batch_emtitle / batch_button: 모든 수신 슬롯에 동일 적용(알리고 `emtitle_1`, `button_1` …).
+    button 값은 API 스펙대로 JSON 문자열.
     """
     apikey = (getattr(settings, "ALIGO_API_KEY", "") or "").strip()
     userid = (getattr(settings, "ALIGO_USER_ID", "") or "").strip()
@@ -49,6 +58,10 @@ def send_alimtalk_with_aligo(
         return {"ok": False, "message": "알리고 알림톡은 최대 500건까지 지원합니다."}
 
     test_mode = "Y" if bool(getattr(settings, "ALIGO_KAKAO_TEST_MODE", False)) else "N"
+    batch_emtitle_s = (batch_emtitle or "").strip()[:500] if batch_emtitle else ""
+    batch_button_s = (batch_button or "").strip() if batch_button else ""
+    if len(batch_button_s) > 16000:
+        batch_button_s = batch_button_s[:16000]
 
     payload: dict[str, str] = {
         "apikey": apikey,
@@ -73,6 +86,19 @@ def send_alimtalk_with_aligo(
         if recvname:
             payload[f"recvname_{idx}"] = recvname[:40]
 
+        row_em = (row.get("emtitle") or "").strip()[:500]
+        emtitle_val = row_em or batch_emtitle_s
+        if emtitle_val:
+            payload[f"emtitle_{idx}"] = emtitle_val
+
+        row_btn = (row.get("button") or "").strip()
+        if len(row_btn) > 16000:
+            row_btn = row_btn[:16000]
+        button_val = row_btn or batch_button_s
+        if button_val:
+            payload[f"button_{idx}"] = button_val
+
+    log_aligo_form_outbound(ALIGO_KAKAO_ALIMTALK_SEND_URL, payload, channel="kakao_alimtalk")
     try:
         res = requests.post(ALIGO_KAKAO_ALIMTALK_SEND_URL, data=payload, timeout=60)
         res.raise_for_status()
@@ -102,5 +128,62 @@ def send_alimtalk_with_aligo(
         "message": str(body.get("message") or ""),
         "success_cnt": scnt,
         "mid": mid,
+        "raw": body,
+    }
+
+
+def fetch_kakao_alimtalk_history_detail(
+    mid: str | int,
+    *,
+    page: int = 1,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """
+    알리고 akv10 POST /akv10/history/detail/ — mid 기준 수신번호별 전송결과.
+    문서: https://smartsms.aligo.in/alimapi.html
+    """
+    apikey = (getattr(settings, "ALIGO_API_KEY", "") or "").strip()
+    userid = (getattr(settings, "ALIGO_USER_ID", "") or "").strip()
+    mid_s = str(mid).strip() if mid is not None else ""
+    if not apikey or not userid:
+        return {"ok": False, "message": "ALIGO_API_KEY 또는 ALIGO_USER_ID가 설정되지 않았습니다."}
+    if not mid_s:
+        return {"ok": False, "message": "알리고 mid가 없습니다."}
+    pg = max(1, int(page))
+    lim = min(500, max(50, int(limit)))
+    payload: dict[str, str] = {
+        "apikey": apikey,
+        "userid": userid,
+        "mid": mid_s,
+        "page": str(pg),
+        "limit": str(lim),
+    }
+    log_aligo_form_outbound(ALIGO_KAKAO_HISTORY_DETAIL_URL, payload, channel="kakao_history_detail")
+    try:
+        res = requests.post(ALIGO_KAKAO_HISTORY_DETAIL_URL, data=payload, timeout=45)
+        res.raise_for_status()
+        body = res.json()
+    except requests.RequestException:
+        return {"ok": False, "message": "알리고 알림톡 전송결과 조회 네트워크 오류"}
+    except ValueError:
+        return {"ok": False, "message": "알리고 알림톡 전송결과 조회 응답 파싱 실패"}
+
+    code = body.get("code")
+    try:
+        code_int = int(code) if code is not None else -999
+    except (TypeError, ValueError):
+        code_int = -999
+    if code_int != 0:
+        return {"ok": False, "message": str(body.get("message") or "알리고 전송결과 조회 실패"), "raw": body}
+
+    rows = body.get("list")
+    if not isinstance(rows, list):
+        rows = []
+    return {
+        "ok": True,
+        "list": rows,
+        "current_page": body.get("currentPage"),
+        "total_page": body.get("totalPage"),
+        "total_count": body.get("totalCount"),
         "raw": body,
     }

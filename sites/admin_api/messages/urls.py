@@ -18,4 +18,5 @@ urlpatterns = [
     path("templates/<int:template_id>", views.MessageTemplateDetailView.as_view()),
     path("remain", views.AligoRemainView.as_view()),
     path("batches/<int:batch_id>/sync-result", views.MessageBatchSyncResultView.as_view()),
+    path("batches/<int:batch_id>/kakao-aligo-detail", views.MessageBatchKakaoAligoHistoryDetailView.as_view()),
 ]

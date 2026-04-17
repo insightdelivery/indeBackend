@@ -20,6 +20,7 @@ class KakaoTemplateSerializer(serializers.ModelSerializer):
             "template_code",
             "template_name",
             "content",
+            "emtitle",
             "variables",
             "buttons",
             "status",
@@ -53,6 +54,8 @@ class MessageDetailSerializer(serializers.ModelSerializer):
 
 
 class MessageBatchListSerializer(serializers.ModelSerializer):
+    aligo_kakao_mid = serializers.SerializerMethodField()
+
     class Meta:
         model = MessageBatch
         fields = [
@@ -70,7 +73,24 @@ class MessageBatchListSerializer(serializers.ModelSerializer):
             "scheduled_at",
             "completed_at",
             "created_at",
+            "aligo_kakao_mid",
         ]
+
+    def get_aligo_kakao_mid(self, obj: MessageBatch) -> str | None:
+        if obj.type != MessageBatch.TYPE_KAKAO:
+            return None
+        rs = obj.result_snapshot or {}
+        if isinstance(rs, dict):
+            prov = rs.get("provider")
+            if prov not in (None, "", "aligo_kakao"):
+                return None
+            mid = rs.get("mid")
+            if mid is not None and str(mid).strip():
+                return str(mid).strip()
+        d = obj.details.exclude(external_code="").first()
+        if d and str(d.external_code or "").strip():
+            return str(d.external_code).strip()
+        return None
 
 
 class MessageBatchSerializer(serializers.ModelSerializer):

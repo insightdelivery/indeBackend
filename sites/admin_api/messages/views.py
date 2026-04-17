@@ -1,7 +1,9 @@
-import requests
+import json
 import re
+import requests
 from datetime import datetime
 from datetime import timedelta
+from typing import Any
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.conf import settings
@@ -27,7 +29,7 @@ from .models import (
     MessageTemplate,
 )
 from .aligo_sms import send_mass_with_aligo, fetch_sms_list_all
-from .aligo_kakao import send_alimtalk_with_aligo
+from .aligo_kakao import fetch_kakao_alimtalk_history_detail, send_alimtalk_with_aligo
 from .email_dispatch import send_email_batch_details
 from .serializers import (
     KakaoTemplateSerializer,
@@ -49,6 +51,46 @@ def _is_valid_receiver_email(value: str) -> bool:
         return True
     except DjangoValidationError:
         return False
+
+
+def _aligo_button_n_json_for_send(btn_raw: Any) -> str | None:
+    """알리고 알림톡 폼 필드 `button_1` 등에 넣는 JSON 문자열로 정규화한다."""
+    if btn_raw is None or btn_raw == [] or btn_raw == {}:
+        return None
+    parsed: Any = btn_raw
+    if isinstance(btn_raw, str):
+        s = btn_raw.strip()
+        if not s:
+            return None
+        try:
+            parsed = json.loads(s)
+        except json.JSONDecodeError:
+            return s[:16000] if len(s) > 16000 else s
+    try:
+        if isinstance(parsed, list):
+            wrapped: dict[str, Any] = {"button": parsed}
+        elif isinstance(parsed, dict) and "button" in parsed:
+            wrapped = parsed
+        elif isinstance(parsed, dict):
+            wrapped = {"button": [parsed]}
+        else:
+            return None
+        btn_s = json.dumps(wrapped, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return None
+    if not btn_s:
+        return None
+    return btn_s[:16000] if len(btn_s) > 16000 else btn_s
+
+
+def _kakao_alimtalk_extras_from_template(tpl: KakaoTemplate | None) -> tuple[str | None, str | None]:
+    """알리고 `emtitle_1`, `button_1` — `KakaoTemplate.emtitle`·`buttons` 기준."""
+    if tpl is None:
+        return None, None
+    raw_em = getattr(tpl, "emtitle", None)
+    em_s = str(raw_em).strip()[:500] if raw_em is not None and str(raw_em).strip() else None
+    btn_s = _aligo_button_n_json_for_send(tpl.buttons)
+    return em_s, btn_s
 
 
 class KakaoTemplateListCreateView(APIView):
@@ -115,14 +157,14 @@ class MessageBatchListCreateView(APIView):
         return MenuCodes.SMS_KAKAO_SEND
 
     def get(self, request):
-        qs = MessageBatch.objects.all()
+        qs = MessageBatch.objects.all().prefetch_related("details")
         status_filter = request.query_params.get("status")
         type_filter = request.query_params.get("type")
         if status_filter:
             qs = qs.filter(status=status_filter)
         if type_filter:
             qs = qs.filter(type=type_filter)
-        qs = qs.annotate(detail_count=Count("details"))
+        qs = qs.annotate(detail_count=Count("details")).order_by("-requested_at", "-id")
         data = MessageBatchListSerializer(qs, many=True).data
         return Response(create_success_response(data, "전송 배치 목록 조회 성공"))
 
@@ -298,12 +340,15 @@ class MessageBatchListCreateView(APIView):
                         }
                         for d in db_valid_details
                     ]
+                    emt, btn = _kakao_alimtalk_extras_from_template(tpl_row)
                     send_result = send_alimtalk_with_aligo(
                         batch.sender,
                         senderkey,
                         tpl_row.template_code,
                         items,
                         reserve_at=reserve_at,
+                        batch_emtitle=emt,
+                        batch_button=btn,
                     )
                     batch.api_response_logs = [send_result.get("raw")] if send_result.get("raw") is not None else []
                     if send_result.get("ok"):
@@ -398,6 +443,65 @@ class MessageBatchListCreateView(APIView):
 
         out = MessageBatchSerializer(batch).data
         return Response(create_success_response(out, "전송 배치가 생성되었습니다."), status=status.HTTP_201_CREATED)
+
+
+class MessageBatchKakaoAligoHistoryDetailView(APIView):
+    """알리고 akv10 `/akv10/history/detail/` — 배치에 연결된 mid로 수신번호별 결과 조회."""
+
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = (MenuCodes.SMS_KAKAO_HISTORY, MenuCodes.EMAIL_HISTORY)
+
+    def get(self, request, batch_id: int):
+        try:
+            batch = MessageBatch.objects.prefetch_related("details").get(id=batch_id)
+        except MessageBatch.DoesNotExist:
+            return Response(create_error_response("배치를 찾을 수 없습니다.", "04"), status=status.HTTP_404_NOT_FOUND)
+        if batch.type != MessageBatch.TYPE_KAKAO:
+            return Response(create_error_response("카카오 알림톡 배치만 조회할 수 있습니다.", "01"), status=status.HTTP_400_BAD_REQUEST)
+        rs = batch.result_snapshot or {}
+        if isinstance(rs, dict):
+            prov = rs.get("provider")
+            if prov not in (None, "", "aligo_kakao"):
+                return Response(
+                    create_error_response("알리고 알림톡으로 발송된 배치만 알리고 상세조회가 가능합니다.", "01"),
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        mid = str(rs.get("mid") or "").strip() if isinstance(rs, dict) else ""
+        if not mid:
+            first_detail = batch.details.exclude(external_code="").first()
+            mid = str(first_detail.external_code or "").strip() if first_detail else ""
+        if not mid:
+            return Response(
+                create_error_response("알리고 메시지 ID(mid)가 없습니다. 발송 완료 후 다시 시도해 주세요.", "01"),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            page = int(request.query_params.get("page") or 1)
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            limit = int(request.query_params.get("limit") or 50)
+        except (TypeError, ValueError):
+            limit = 50
+        out = fetch_kakao_alimtalk_history_detail(mid, page=page, limit=limit)
+        if not out.get("ok"):
+            return Response(
+                create_error_response(str(out.get("message") or "알리고 조회 실패"), "99"),
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(
+            create_success_response(
+                {
+                    "mid": mid,
+                    "list": out.get("list") or [],
+                    "current_page": out.get("current_page"),
+                    "total_page": out.get("total_page"),
+                    "total_count": out.get("total_count"),
+                },
+                "알리고 알림톡 전송결과 상세",
+            )
+        )
 
 
 class MessageBatchDetailView(APIView):
@@ -593,12 +697,15 @@ class MessageBatchResendFailedView(APIView):
                         }
                         for d in db_valid_details
                     ]
+                    emt, btn = _kakao_alimtalk_extras_from_template(tpl_row)
                     send_result = send_alimtalk_with_aligo(
                         new_batch.sender,
                         senderkey,
                         tpl_row.template_code,
                         items,
                         reserve_at=None,
+                        batch_emtitle=emt,
+                        batch_button=btn,
                     )
                     new_batch.api_response_logs = [send_result.get("raw")] if send_result.get("raw") is not None else []
                     if send_result.get("ok"):

@@ -279,6 +279,8 @@ ALIGO_SENDER = (os.getenv("ALIGO_SENDER") or "").strip()
 # 카카오 알림톡(알리고 akv10) — 발신프로필 키·테스트모드
 ALIGO_KAKAO_SENDERKEY = (os.getenv("ALIGO_KAKAO_SENDERKEY") or "").strip()
 ALIGO_KAKAO_TEST_MODE = os.getenv("ALIGO_KAKAO_TEST_MODE", "N").strip().upper() in ("Y", "1", "YES", "TRUE")
+# True: 발송 직전 로그에 apikey·senderkey 등 비밀값까지 curl과 동일하게 기록(로그 유출 주의)
+ALIGO_LOG_FULL_OUTBOUND = os.getenv("ALIGO_LOG_FULL_OUTBOUND", "").lower() in ("1", "true", "yes", "y")
 SMS_SERVICE_NAME = (os.getenv("SMS_SERVICE_NAME") or "INDE").strip()
 # DEBUG이고 SMS_SKIP_SEND=1 일 때만: SMS 미발송, 검증 로직은 동일(로그에 코드 출력)
 SMS_SKIP_SEND = DEBUG and os.getenv("SMS_SKIP_SEND", "").lower() in ("1", "true", "yes")
@@ -364,6 +366,11 @@ LOGGING = {
             'propagate': False,
         },
         'sites.public_api': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'sites.admin_api.messages': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': False,

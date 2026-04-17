@@ -108,6 +108,12 @@ class KakaoTemplate(models.Model):
     template_code = models.CharField(max_length=80, unique=True)
     template_name = models.CharField(max_length=120)
     content = models.TextField()
+    emtitle = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="알리고 알림톡 강조표기형 타이틀(emtitle_1)",
+    )
     variables = models.JSONField(default=list, blank=True)
     buttons = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_APPROVED, db_index=True)

@@ -6,6 +6,8 @@ from typing import Iterable
 import requests
 from django.conf import settings
 
+from .aligo_log import log_aligo_form_outbound
+
 
 ALIGO_SEND_MASS_URL = "https://apis.aligo.in/send_mass/"
 ALIGO_SMS_LIST_URL = "https://apis.aligo.in/sms_list/"
@@ -57,6 +59,7 @@ def send_mass_with_aligo(
         payload[f"rec_{idx}"] = phone
         payload[f"msg_{idx}"] = msg
 
+    log_aligo_form_outbound(ALIGO_SEND_MASS_URL, payload, channel="sms_send_mass")
     try:
         res = requests.post(ALIGO_SEND_MASS_URL, data=payload, timeout=20)
         res.raise_for_status()
