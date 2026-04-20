@@ -3,6 +3,8 @@
 
 평문 길이 기준으로 앞부분만 보여 주되, 가능하면 <p>·제목·인용·목록 등
 블록 태그 구조를 유지한다(구버전은 전부 한 줄 <p>평문으로만 반환).
+
+미리보기 구간 안에 있는 <img>·<figure>는 평문 예산을 넘기 전까지 그대로 유지한다.
 """
 from __future__ import annotations
 
@@ -18,14 +20,28 @@ _SCRIPT_STYLE_RE = re.compile(
 )
 
 # 본문에서 자주 쓰이는 블록 단위(에디터 HTML 기준). 비탐욕 매칭.
+# figure·img를 <p>보다 앞에 두어, 단독 이미지 블록을 분리 매칭한다.
 _BLOCK_RE = re.compile(
-    r'<p\b[^>]*>[\s\S]*?</p>'
+    r'<figure\b[^>]*>[\s\S]*?</figure>'
+    r'|<img\b[^>]*\/?\s*>'
+    r'|<p\b[^>]*>[\s\S]*?</p>'
     r'|<h[1-6]\b[^>]*>[\s\S]*?</h[1-6]>'
     r'|<blockquote\b[^>]*>[\s\S]*?</blockquote>'
     r'|<ul\b[^>]*>[\s\S]*?</ul>'
     r'|<ol\b[^>]*>[\s\S]*?</ol>',
     re.I,
 )
+
+# 평문 예산을 소모하며 HTML을 순서대로 자를 때 사용 (img·figure 보존)
+_BUDGET_TOKEN = re.compile(
+    r'<img\b[^>]*\/?\s*>'
+    r'|<figure\b[^>]*>[\s\S]*?</figure>'
+    r'|<[^>]+>'
+    r'|[^<]+',
+    re.I,
+)
+
+_FIGURE_WRAPPER_RE = re.compile(r'^<figure(\b[^>]*)>([\s\S]*)</figure>\s*$', re.I)
 
 
 def plain_text_from_html(html: str) -> str:
@@ -34,6 +50,70 @@ def plain_text_from_html(html: str) -> str:
     text = _TAG_RE.sub(' ', str(html))
     text = html_module.unescape(text)
     return ' '.join(text.split())
+
+
+def _plain_prefix_truncate(chunk: str, need: int) -> str:
+    """태그 없는 조각(chunk)을 평문 need자까지 이스케이프해 잘라낸다."""
+    if need <= 0:
+        return ''
+    t = html_module.unescape(chunk)
+    t = ' '.join(t.split())
+    if len(t) <= need:
+        return html_module.escape(t)
+    return html_module.escape(t[:need].rstrip()) + '…'
+
+
+def _budgeted_html(s: str, cap: int) -> tuple[str, int]:
+    """
+    문서 순서대로 HTML을내되, img·figure는 그대로 두고
+    그 외 조각은 plain_text_from_html 기준으로 cap자까지만 소모한다.
+
+    Returns (html_fragment, plain_chars_emitted).
+    """
+    if cap <= 0 or not s:
+        return '', 0
+    used = 0
+    out: list[str] = []
+    for m in _BUDGET_TOKEN.finditer(s):
+        tok = m.group(0)
+        low = tok.lower()
+        if low.startswith('<img'):
+            out.append(tok)
+            continue
+        if low.startswith('<figure'):
+            pc = len(plain_text_from_html(tok))
+            if used + pc <= cap:
+                out.append(tok)
+                used += pc
+            else:
+                fm = _FIGURE_WRAPPER_RE.match(tok.strip())
+                if fm:
+                    inner_html, u2 = _budgeted_html(fm.group(2), cap - used)
+                    out.append(f'<figure{fm.group(1)}>{inner_html}</figure>')
+                    used += u2
+                break
+            continue
+        if tok.startswith('<'):
+            pc = len(plain_text_from_html(tok))
+            if pc == 0:
+                out.append(tok)
+                continue
+            if used + pc <= cap:
+                out.append(tok)
+                used += pc
+            else:
+                break
+            continue
+        pc = len(plain_text_from_html(tok))
+        if used + pc <= cap:
+            out.append(tok)
+            used += pc
+        else:
+            need = cap - used
+            out.append(_plain_prefix_truncate(tok, need))
+            used = cap
+            break
+    return ''.join(out), used
 
 
 def _legacy_single_paragraph_preview(plain: str, n: int, total: int) -> tuple[str, bool]:
@@ -46,7 +126,7 @@ def _legacy_single_paragraph_preview(plain: str, n: int, total: int) -> tuple[st
 
 
 def _truncate_block_to_plain_budget(block: str, remain: int) -> str:
-    """블록 HTML을 평문 remain 자까지 잘라 동일 래퍼를 유지한다. 서식 태그는 잘린 꼬리에서 제거."""
+    """블록 HTML을 평문 remain 자까지 잘라 동일 래퍼를 유지한다. img·figure는 가능한 한 유지."""
     if remain <= 0:
         return ''
     m = re.match(r'^<(p|h[1-6]|blockquote)(\b[^>]*)>([\s\S]*)</\1>\s*$', block.strip(), re.I)
@@ -55,27 +135,27 @@ def _truncate_block_to_plain_budget(block: str, remain: int) -> str:
         inner_plain = plain_text_from_html(inner)
         if len(inner_plain) <= remain:
             return block
-        cut = inner_plain[:remain].rstrip() + '…'
-        return f'<{tag}{attrs}>{html_module.escape(cut)}</{tag}>'
+        inner_out, _ = _budgeted_html(inner, remain)
+        return f'<{tag}{attrs}>{inner_out}</{tag}>'
     mu = re.match(r'^(<ul)(\b[^>]*>)([\s\S]*)(</ul>\s*)$', block.strip(), re.I)
     if mu:
         inner_plain = plain_text_from_html(mu.group(3))
         if len(inner_plain) <= remain:
             return block
-        cut = inner_plain[:remain].rstrip() + '…'
-        return f'{mu.group(1)}{mu.group(2)}<li>{html_module.escape(cut)}</li>{mu.group(4)}'
+        inner_out, _ = _budgeted_html(mu.group(3), remain)
+        return f'{mu.group(1)}{mu.group(2)}{inner_out}{mu.group(4)}'
     mo = re.match(r'^(<ol)(\b[^>]*>)([\s\S]*)(</ol>\s*)$', block.strip(), re.I)
     if mo:
         inner_plain = plain_text_from_html(mo.group(3))
         if len(inner_plain) <= remain:
             return block
-        cut = inner_plain[:remain].rstrip() + '…'
-        return f'{mo.group(1)}{mo.group(2)}<li>{html_module.escape(cut)}</li>{mo.group(4)}'
+        inner_out, _ = _budgeted_html(mo.group(3), remain)
+        return f'{mo.group(1)}{mo.group(2)}{inner_out}{mo.group(4)}'
     bp = plain_text_from_html(block)
     if len(bp) <= remain:
         return block
-    cut = bp[:remain].rstrip() + '…'
-    return f'<p>{html_module.escape(cut)}</p>'
+    inner_out, _ = _budgeted_html(block, remain)
+    return inner_out or f'<p>{html_module.escape(bp[:remain].rstrip() + "…")}</p>'
 
 
 def _structured_preview(full_html: str, n: int, total: int) -> tuple[str, bool] | None:
@@ -94,15 +174,14 @@ def _structured_preview(full_html: str, n: int, total: int) -> tuple[str, bool] 
     if first_start > 0:
         preamble = full_html[:first_start]
         pp = plain_text_from_html(preamble)
-        if pp:
-            if len(pp) <= n:
-                out_chunks.append(preamble)
-                used = len(pp)
-            else:
-                # 앞머리만 평문으로
-                snippet = pp[:n].rstrip() + '…'
-                out_chunks.append(f'<p>{html_module.escape(snippet)}</p>')
-                return ''.join(out_chunks), True
+        if len(pp) <= n:
+            out_chunks.append(preamble)
+            used = len(pp)
+        else:
+            frag, used1 = _budgeted_html(preamble, n)
+            out_chunks.append(frag)
+            used = used1
+            return ''.join(out_chunks), True
 
     for m in blocks:
         block = m.group(0)
@@ -155,4 +234,8 @@ def preview_content_html(full_html: str, percent: int | None) -> tuple[str, bool
     if structured is not None:
         return structured
 
+    frag, _ = _budgeted_html(cleaned, n)
+    if frag.strip():
+        return frag, True
     return _legacy_single_paragraph_preview(plain, n, total)
+
