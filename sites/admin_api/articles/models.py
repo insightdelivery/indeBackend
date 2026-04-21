@@ -4,6 +4,8 @@
 from django.db import models
 from django.utils import timezone as django_timezone
 
+from sites.admin_api.content_publish_syscodes import STATUS_DELETED, STATUS_DRAFT
+
 
 class Article(models.Model):
     """
@@ -44,9 +46,9 @@ class Article(models.Model):
     )
     status = models.CharField(
         max_length=50,
-        default='draft',
+        default=STATUS_DRAFT,
         verbose_name='발행 상태 (sysCodeSid)',
-        help_text='draft, published, private, scheduled, deleted 중 하나 또는 sysCodeSid'
+        help_text='sysCodeManager 부모 SYS26209B020 하위 sysCodeSid (예: SYS26209B021~025)',
     )
     isEditorPick = models.BooleanField(default=False, verbose_name='에디터 추천')
     
@@ -90,7 +92,7 @@ class Article(models.Model):
     
     def soft_delete(self, deleted_by=None):
         """소프트 삭제"""
-        self.status = 'deleted'
+        self.status = STATUS_DELETED
         self.deletedAt = django_timezone.now()
         if deleted_by:
             self.deletedBy = deleted_by
@@ -98,7 +100,7 @@ class Article(models.Model):
     
     def restore(self):
         """복구"""
-        self.status = 'draft'
+        self.status = STATUS_DRAFT
         self.deletedAt = None
         self.deletedBy = None
         self.save()
@@ -106,5 +108,5 @@ class Article(models.Model):
     @property
     def is_deleted(self):
         """삭제 여부 확인"""
-        return self.deletedAt is not None or self.status == 'deleted'
+        return self.deletedAt is not None or self.status == STATUS_DELETED
 

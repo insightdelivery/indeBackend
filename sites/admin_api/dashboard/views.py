@@ -18,6 +18,12 @@ from apps.inquiry.models import Inquiry
 from core.utils import create_error_response, create_success_response
 from sites.admin_api.articles.models import Article
 from sites.admin_api.authentication import AdminJWTAuthentication
+from sites.admin_api.content_publish_syscodes import (
+    STATUS_DRAFT,
+    STATUS_PRIVATE,
+    STATUS_PUBLISHED,
+    STATUS_SCHEDULED,
+)
 from sites.admin_api.menu_codes import MenuCodes
 from sites.admin_api.permissions import check_menu_permission
 from sites.admin_api.video.models import Video
@@ -136,10 +142,10 @@ def _aggregate_article() -> dict[str, int]:
     deleted = Article.objects.filter(deletedAt__isnull=False).count()
     return {
         "total": active.count(),
-        "draft": active.filter(status="draft").count(),
-        "published": active.filter(status="published").count(),
-        "private": active.filter(status="private").count(),
-        "scheduled": active.filter(status="scheduled").count(),
+        "draft": active.filter(status=STATUS_DRAFT).count(),
+        "published": active.filter(status=STATUS_PUBLISHED).count(),
+        "private": active.filter(status=STATUS_PRIVATE).count(),
+        "scheduled": active.filter(status=STATUS_SCHEDULED).count(),
         "deleted": deleted,
     }
 
@@ -224,9 +230,9 @@ def _aggregate_video(content_type: str) -> dict[str, int]:
     deleted = Video.objects.filter(contentType=content_type, deletedAt__isnull=False).count()
     return {
         "total": active.count(),
-        "public": active.filter(status="public").count(),
-        "private": active.filter(status="private").count(),
-        "scheduled": active.filter(status="scheduled").count(),
+        "public": active.filter(status=STATUS_PUBLISHED).count(),
+        "private": active.filter(status=STATUS_PRIVATE).count(),
+        "scheduled": active.filter(status=STATUS_SCHEDULED).count(),
         "deleted": deleted,
     }
 

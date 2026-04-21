@@ -4,6 +4,8 @@
 from django.db import models
 from django.utils import timezone as django_timezone
 
+from sites.admin_api.content_publish_syscodes import STATUS_DELETED, STATUS_PRIVATE
+
 
 class Video(models.Model):
     """
@@ -68,9 +70,9 @@ class Video(models.Model):
     )
     status = models.CharField(
         max_length=50,
-        default='private',
+        default=STATUS_PRIVATE,
         verbose_name='상태 (sysCodeSid)',
-        help_text='public: 공개, private: 비공개, scheduled: 예약, deleted: 삭제대기'
+        help_text='아티클 발행상태와 동일 SID 집합(SYS26209B020 하위, 예: SYS26209B021~025)',
     )
     
     # 배지 및 기능
@@ -122,7 +124,7 @@ class Video(models.Model):
     
     def soft_delete(self, deleted_by=None):
         """소프트 삭제"""
-        self.status = 'deleted'
+        self.status = STATUS_DELETED
         self.deletedAt = django_timezone.now()
         if deleted_by:
             self.deletedBy = deleted_by
@@ -130,7 +132,7 @@ class Video(models.Model):
     
     def restore(self):
         """복구"""
-        self.status = 'private'
+        self.status = STATUS_PRIVATE
         self.deletedAt = None
         self.deletedBy = None
         self.save()
@@ -138,7 +140,7 @@ class Video(models.Model):
     @property
     def is_deleted(self):
         """삭제 여부 확인"""
-        return self.deletedAt is not None or self.status == 'deleted'
+        return self.deletedAt is not None or self.status == STATUS_DELETED
     
     def get_display_id(self):
         """표시용 ID 생성 (V/S + YYYYMMDD + Sequence)"""

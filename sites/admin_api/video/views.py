@@ -12,6 +12,7 @@ from datetime import datetime
 import logging
 
 from sites.admin_api.video.models import Video
+from sites.admin_api.content_publish_syscodes import VIDEO_STATUS_BATCH_ALLOWED, is_trash_status_filter
 from sites.admin_api.video.serializers import (
     VideoSerializer,
     VideoListSerializer,
@@ -83,8 +84,7 @@ class VideoListView(APIView):
             sort = request.query_params.get('sort', 'createdAt')  # createdAt, viewCount, rating
             
             # 기본 쿼리셋
-            # status가 'deleted'인 경우 삭제된 항목만 조회, 그 외에는 삭제되지 않은 항목만 조회
-            if status_filter == 'deleted':
+            if is_trash_status_filter(status_filter):
                 queryset = Video.objects.filter(deletedAt__isnull=False)
             else:
                 queryset = Video.objects.filter(deletedAt__isnull=True)
@@ -118,10 +118,8 @@ class VideoListView(APIView):
                 queryset = queryset.filter(visibility=visibility)
             
             # 상태 필터링
-            if status_filter and status_filter != 'deleted':
+            if status_filter and not is_trash_status_filter(status_filter):
                 queryset = queryset.filter(status=status_filter)
-            elif status_filter == 'deleted':
-                queryset = queryset.filter(status='deleted')
             
             # 검색 (제목, 출연자, 키워드)
             if search:
@@ -584,7 +582,13 @@ class VideoBatchStatusView(APIView):
                     create_error_response('변경할 상태가 필요합니다.', '01'),
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
+            if new_status not in VIDEO_STATUS_BATCH_ALLOWED:
+                return Response(
+                    create_error_response('상태는 sysCodeSid만 허용됩니다.', '01'),
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # 각 비디오의 상태 변경
             updated_count = 0
             for video_id in ids:

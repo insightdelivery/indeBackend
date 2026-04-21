@@ -16,6 +16,7 @@ from django.db import connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from sites.admin_api.content_publish_syscodes import STATUS_PUBLISHED
 from sites.public_api.models import ContentRankingCache
 
 ARTICLE = 'ARTICLE'
@@ -36,7 +37,7 @@ def _published_article_codes_recent_first() -> List[str]:
 
     qs = (
         Article.objects.filter(deletedAt__isnull=True)
-        .filter(Q(status='SYS26209B021') | Q(status='published'))
+        .filter(Q(status=STATUS_PUBLISHED))
         .order_by('-createdAt')
     )
     return [str(pk) for pk in qs.values_list('id', flat=True)]
@@ -198,7 +199,7 @@ def _published_video_codes_recent_first(api_ct: str) -> List[str]:
 
     lc = 'video' if api_ct == VIDEO else 'seminar'
     qs = (
-        Video.objects.filter(deletedAt__isnull=True, status='public', contentType=lc)
+        Video.objects.filter(deletedAt__isnull=True, status=STATUS_PUBLISHED, contentType=lc)
         .order_by('-createdAt')
         .values_list('id', flat=True)
     )
@@ -276,7 +277,7 @@ def _published_category_article_ids_recent_first(category: str) -> List[str]:
     return [
         str(pk)
         for pk in Article.objects.filter(deletedAt__isnull=True, category=category)
-        .filter(Q(status='SYS26209B021'))
+        .filter(Q(status=STATUS_PUBLISHED))
         .order_by('-createdAt')
         .values_list('id', flat=True)
     ]
@@ -287,7 +288,7 @@ def _all_published_category_codes() -> List[str]:
 
     qs = (
         Article.objects.filter(deletedAt__isnull=True)
-        .filter(Q(status='SYS26209B021'))
+        .filter(Q(status=STATUS_PUBLISHED))
         .values_list('category', flat=True)
         .distinct()
         .order_by('category')

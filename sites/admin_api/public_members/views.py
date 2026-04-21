@@ -20,6 +20,7 @@ from sites.admin_api.permissions import MenuPermission
 from sites.public_api.models import PublicMemberShip, PublicUserActivityLog, IndeUser
 from sites.admin_api.articles.models import Article
 from sites.admin_api.articles.utils import get_presigned_thumbnail_url as article_presigned_thumbnail
+from sites.admin_api.content_publish_syscodes import STATUS_PUBLISHED
 from sites.admin_api.video.models import Video
 from sites.admin_api.video.utils import get_presigned_thumbnail_url as video_presigned_thumbnail
 from apps.highlight.models import ArticleHighlight
@@ -587,7 +588,7 @@ class AdminPublicMemberViewSet(viewsets.ModelViewSet):
             for a in Article.objects.filter(
                 id__in=article_ids,
                 deletedAt__isnull=True,
-            ).filter(Q(status='SYS26209B021') | Q(status='published')).only('id', 'title', 'subtitle', 'thumbnail', 'category'):
+            ).filter(Q(status='SYS26209B021')).only('id', 'title', 'subtitle', 'thumbnail', 'category'):
                 article_map[a.id] = a
 
         video_map = {}
@@ -597,7 +598,7 @@ class AdminPublicMemberViewSet(viewsets.ModelViewSet):
             for v in Video.objects.filter(
                 id__in=list(vid_set),
                 deletedAt__isnull=True,
-                status='public',
+                status=STATUS_PUBLISHED,
             ).only('id', 'title', 'subtitle', 'thumbnail', 'category', 'contentType'):
                 if v.contentType == 'video':
                     video_map[v.id] = v

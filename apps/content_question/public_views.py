@@ -16,6 +16,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from core.models import SysCodeManager
 from core.utils import create_success_response, create_error_response
+from sites.admin_api.content_publish_syscodes import STATUS_PUBLISHED
 from sites.admin_api.articles.models import Article
 from sites.admin_api.articles.utils import get_presigned_thumbnail_url as article_presigned_thumbnail
 from sites.admin_api.video.models import Video
@@ -256,7 +257,7 @@ class ContentMyAnsweredContentsListView(APIView):
             for a in Article.objects.filter(
                 id__in=article_ids,
                 deletedAt__isnull=True,
-            ).filter(Q(status='SYS26209B021') | Q(status='published')).only(
+            ).filter(Q(status='SYS26209B021')).only(
                 'id', 'title', 'subtitle', 'thumbnail', 'category'
             ):
                 article_map[a.id] = a
@@ -268,7 +269,7 @@ class ContentMyAnsweredContentsListView(APIView):
             for v in Video.objects.filter(
                 id__in=list(vid_set),
                 deletedAt__isnull=True,
-                status='public',
+                status=STATUS_PUBLISHED,
             ).only('id', 'title', 'subtitle', 'thumbnail', 'category', 'contentType'):
                 if v.contentType == 'video':
                     video_map[v.id] = v

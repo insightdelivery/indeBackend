@@ -12,6 +12,7 @@ import logging
 
 from sites.admin_api.articles.models import Article
 from sites.admin_api.content_author.models import ContentAuthor
+from sites.admin_api.content_publish_syscodes import ARTICLE_STATUS_BATCH_ALLOWED, is_trash_status_filter
 
 logger = logging.getLogger(__name__)
 from sites.admin_api.articles.serializers import (
@@ -82,9 +83,8 @@ class ArticleListView(APIView):
             status_filter = request.query_params.get('status')
             search = request.query_params.get('search')
             
-            # 기본 쿼리셋
-            # status가 'deleted'인 경우 삭제된 항목만 조회, 그 외에는 삭제되지 않은 항목만 조회
-            if status_filter == 'deleted':
+            # 기본 쿼리셋 (휴지통: status=삭제 SID 또는 레거시 'deleted' 쿼리)
+            if is_trash_status_filter(status_filter):
                 queryset = Article.objects.filter(deletedAt__isnull=False)
             else:
                 queryset = Article.objects.filter(deletedAt__isnull=True)
@@ -114,14 +114,9 @@ class ArticleListView(APIView):
             if visibility:
                 queryset = queryset.filter(visibility=visibility)
             
-            # 상태 필터링
-            # status='deleted'인 경우는 이미 deletedAt__isnull=False로 필터링했으므로
-            # status 필터링은 건너뛰거나, 또는 status='deleted'가 아닌 경우에만 적용
-            if status_filter and status_filter != 'deleted':
+            # 상태 필터링 (휴지통은 deletedAt 기준만 — status SID 불일치 레거시 행도 포함)
+            if status_filter and not is_trash_status_filter(status_filter):
                 queryset = queryset.filter(status=status_filter)
-            elif status_filter == 'deleted':
-                # 삭제된 항목은 status='deleted'인 것만 조회
-                queryset = queryset.filter(status='deleted')
             
             # 검색 (제목, 본문, 작성자)
             if search:
@@ -724,7 +719,7 @@ class ArticleBatchStatusView(APIView):
     def put(self, request):
         """
         아티클 상태 일괄 변경
-        Body: { "ids": [1, 2, 3, ...], "status": "published" }
+        Body: { "ids": [1, 2, 3, ...], "status": "<발행상태 sysCodeSid>" }
         """
         try:
             ids = request.data.get('ids', [])
@@ -741,7 +736,13 @@ class ArticleBatchStatusView(APIView):
                     create_error_response('상태값이 필요합니다.', '01'),
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
+            if new_status not in ARTICLE_STATUS_BATCH_ALLOWED:
+                return Response(
+                    create_error_response('발행 상태는 sysCodeSid만 허용됩니다.', '01'),
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # 상태 일괄 변경
             articles = Article.objects.filter(id__in=ids, deletedAt__isnull=True)
             count = articles.count()

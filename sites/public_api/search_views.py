@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from core.models import SysCodeManager
 from core.utils import create_error_response, create_success_response
 from sites.admin_api.articles.models import Article
+from sites.admin_api.content_publish_syscodes import STATUS_PUBLISHED
 from sites.admin_api.articles.serializers import ArticleListSerializer
 from sites.admin_api.articles.utils import get_presigned_thumbnail_url
 from sites.admin_api.video.models import Video
@@ -134,7 +135,7 @@ class PublicUnifiedSearchView(APIView):
 
             article_qs = (
                 Article.objects.filter(deletedAt__isnull=True)
-                .filter(Q(status="SYS26209B021"))
+                .filter(Q(status=STATUS_PUBLISHED))
                 .filter(_article_search_q(q))
                 .annotate(priority=_article_priority_case(q))
                 .order_by("priority", "-createdAt")[:SEARCH_LIMIT]
@@ -142,7 +143,7 @@ class PublicUnifiedSearchView(APIView):
 
             video_base = Video.objects.filter(
                 deletedAt__isnull=True,
-                status="public",
+                status=STATUS_PUBLISHED,
             )
 
             video_qs = (

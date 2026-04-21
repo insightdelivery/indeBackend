@@ -1,7 +1,7 @@
 """
 공개용 비디오 목록/상세 API (frontend_www)
 - 인증 불필요(AllowAny)
-- 목록: contentType=video, 삭제 제외, status=public 만
+- 목록: contentType=video, 삭제 제외, status=SYS26209B021(공개) 만
 - 상세: video/seminar 공개 행 단건 (frontend_www 상세·세미나 상세 공용)
 """
 import logging
@@ -14,6 +14,7 @@ from django.core.paginator import Paginator
 from django.db.models import F
 from django.core.cache import cache
 
+from sites.admin_api.content_publish_syscodes import STATUS_PUBLISHED
 from sites.admin_api.video.models import Video
 from sites.admin_api.video.serializers import VideoListSerializer, VideoSerializer
 from sites.admin_api.video.utils import get_presigned_thumbnail_url, presign_video_asset_url
@@ -82,7 +83,7 @@ class PublicVideoListView(APIView):
             queryset = Video.objects.filter(
                 deletedAt__isnull=True,
                 contentType=content_type,
-                status="public",
+                status=STATUS_PUBLISHED,
             )
             if category:
                 queryset = queryset.filter(category=category)
@@ -150,7 +151,7 @@ class PublicVideoDetailView(APIView):
                 Video.objects.filter(
                     id=id,
                     deletedAt__isnull=True,
-                    status="public",
+                    status=STATUS_PUBLISHED,
                 )
                 .first()
             )

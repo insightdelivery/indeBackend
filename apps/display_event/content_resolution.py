@@ -10,6 +10,7 @@ from typing import Any, Callable, Optional
 
 from django.db.models import Q
 
+from sites.admin_api.content_publish_syscodes import STATUS_PUBLISHED
 from sites.admin_api.articles.models import Article
 from sites.admin_api.articles.utils import get_presigned_thumbnail_url
 from sites.admin_api.video.models import Video
@@ -53,7 +54,7 @@ def _video_payload(video: Video) -> dict[str, Any]:
 def _load_article(content_id: int) -> Optional[dict]:
     a = (
         Article.objects.filter(id=content_id, deletedAt__isnull=True)
-        .filter(Q(status="SYS26209B021") | Q(status="published"))
+        .filter(Q(status=STATUS_PUBLISHED))
         .first()
     )
     return _article_payload(a) if a else None
@@ -64,7 +65,8 @@ def _load_video(content_id: int) -> Optional[dict]:
         id=content_id,
         deletedAt__isnull=True,
         contentType="video",
-    ).exclude(status="deleted").first()
+        status=STATUS_PUBLISHED,
+    ).first()
     return _video_payload(v) if v else None
 
 
@@ -73,7 +75,8 @@ def _load_seminar(content_id: int) -> Optional[dict]:
         id=content_id,
         deletedAt__isnull=True,
         contentType="seminar",
-    ).exclude(status="deleted").first()
+        status=STATUS_PUBLISHED,
+    ).first()
     return _video_payload(v) if v else None
 
 

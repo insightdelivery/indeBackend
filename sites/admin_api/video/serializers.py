@@ -234,6 +234,14 @@ class VideoCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('카테고리는 필수입니다.')
         return value.strip()
 
+    def validate_status(self, value):
+        if value is not None and not str(value).strip():
+            raise serializers.ValidationError('상태는 필수입니다.')
+        v = str(value).strip() if value is not None else value
+        if v and not (v.startswith('SYS') and len(v) >= 10):
+            raise serializers.ValidationError('상태는 sysCodeSid 형식이어야 합니다.')
+        return v
+
     def validate_thumbnail(self, value):
         """썸네일 검증 - base64 데이터는 검증 건너뛰기"""
         if not value:
@@ -369,10 +377,13 @@ class VideoUpdateSerializer(serializers.ModelSerializer):
         return value.strip() if value else value
 
     def validate_status(self, value):
-        """상태 검증"""
-        if value is not None and not value.strip():
+        """상태 검증 — sysCodeSid만"""
+        if value is not None and not str(value).strip():
             raise serializers.ValidationError('상태는 필수입니다.')
-        return value.strip() if value else value
+        v = str(value).strip() if value is not None else value
+        if v and not (v.startswith('SYS') and len(v) >= 10):
+            raise serializers.ValidationError('상태는 sysCodeSid 형식이어야 합니다.')
+        return v
 
     def validate_thumbnail(self, value):
         """썸네일 검증 - base64 데이터는 검증 건너뛰기"""

@@ -182,6 +182,22 @@ class ArticleCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('작성자는 필수입니다.')
         return value.strip()
 
+    def validate_visibility(self, value):
+        if value is not None and not str(value).strip():
+            raise serializers.ValidationError('공개 범위는 필수입니다.')
+        v = str(value).strip() if value else value
+        if v and not (v.startswith('SYS') and len(v) >= 10):
+            raise serializers.ValidationError('공개 범위는 sysCodeSid 형식이어야 합니다.')
+        return v
+
+    def validate_status(self, value):
+        if value is not None and not str(value).strip():
+            raise serializers.ValidationError('발행 상태는 필수입니다.')
+        v = str(value).strip() if value else value
+        if v and not (v.startswith('SYS') and len(v) >= 10):
+            raise serializers.ValidationError('발행 상태는 sysCodeSid 형식이어야 합니다.')
+        return v
+
 
 class ArticleUpdateSerializer(serializers.ModelSerializer):
     """아티클 수정 시리얼라이저. author_id 선택 시 author는 ContentAuthor.name, authorAffiliation은 role에 따라 뷰에서 자동 설정."""
@@ -247,8 +263,11 @@ class ArticleUpdateSerializer(serializers.ModelSerializer):
         return value.strip() if value else value
     
     def validate_status(self, value):
-        """발행 상태 검증"""
+        """발행 상태 검증 — DB에는 sysCodeSid만 저장"""
         if value is not None and not value.strip():
             raise serializers.ValidationError('발행 상태는 필수입니다.')
-        return value.strip() if value else value
+        v = value.strip() if value else value
+        if v and not (v.startswith('SYS') and len(v) >= 10):
+            raise serializers.ValidationError('발행 상태는 sysCodeSid 형식이어야 합니다.')
+        return v
 

@@ -1,7 +1,7 @@
 """
 공개용 아티클 목록/상세 API (frontend_www)
 - 인증 불필요(AllowAny)
-- status = 즉시발행(sysCode SYS26209B021) 또는 리터럴 'published', 삭제되지 않은 글만 조회
+- status = 즉시발행(sysCode SYS26209B021)만, 삭제되지 않은 글만 조회
 - list-api.me 규칙 준수
 """
 from rest_framework.views import APIView
@@ -14,6 +14,7 @@ from django.db.models import F, Q
 from django.utils import timezone
 
 from sites.admin_api.articles.models import Article
+from sites.admin_api.content_publish_syscodes import STATUS_PUBLISHED
 from sites.public_api.models import ContentRankingCache
 from sites.admin_api.articles.serializers import ArticleListSerializer, ArticleSerializer
 from sites.admin_api.articles.utils import (
@@ -81,7 +82,7 @@ def _category_popular_content_order(category: str, base_date) -> list[str]:
             continue
     tail_qs = (
         Article.objects.filter(deletedAt__isnull=True, category=category)
-        .filter(Q(status='SYS26209B021'))
+        .filter(Q(status=STATUS_PUBLISHED))
         .order_by('-createdAt')
     )
     if ranked_int:
@@ -135,7 +136,7 @@ class PublicArticleListView(APIView):
             queryset = Article.objects.filter(
                 deletedAt__isnull=True,
             ).filter(
-                Q(status='SYS26209B021'),
+                Q(status=STATUS_PUBLISHED),
             ).select_related('author_id')
             if category:
                 queryset = queryset.filter(category=category)
@@ -222,7 +223,7 @@ class PublicArticleDetailView(APIView):
     GET /api/articles/<id>/
     - 인증 선택: 유효 JWT(회원) → 본문 전체. 비회원 → content는 previewLength(0~100%)만큼만(태그 제거 후 글자 수 비율).
     - 응답 contentTruncated: 비회원이며 본문이 잘린 경우 true.
-    - 발행된 글만 조회 (status SYS26209B021 또는 published, 삭제 미포함)
+    - 발행된 글만 조회 (status SYS26209B021, 삭제 미포함)
     - 조회수: 동일 IP 기준 30초 내 1회만 article.viewCount 증가 (공개 비디오 상세와 동일)
     """
     permission_classes = [AllowAny]
@@ -234,7 +235,7 @@ class PublicArticleDetailView(APIView):
                 id=id,
                 deletedAt__isnull=True,
             ).filter(
-                Q(status='SYS26209B021') | Q(status='published'),
+                Q(status=STATUS_PUBLISHED),
             ).select_related('author_id').first()
 
             if not article:
