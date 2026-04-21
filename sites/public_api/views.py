@@ -27,6 +27,7 @@ from sites.public_api.utils import (
 from sites.public_api.jwt_cookies import attach_public_refresh_cookie, clear_public_refresh_cookie
 from sites.public_api import email_verification
 from sites.public_api.kakao_oauth import PLACEHOLDER_EMAIL_DOMAIN
+from sites.public_api.signup_alimtalk import try_send_signup_complete_alimtalk
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +249,11 @@ class RegisterView(APIView):
             )
             member.set_password(data['password'])
             member.save()
+
+            try_send_signup_complete_alimtalk(
+                phone=member.phone or phone_norm,
+                member_name=member.name or '',
+            )
 
             PhoneSmsVerification.objects.filter(phone=phone_norm).delete()
 
@@ -511,6 +517,10 @@ class OAuthCompleteSignupView(APIView):
                 {'error': '회원 가입 처리 중 오류가 발생했습니다.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        try_send_signup_complete_alimtalk(
+            phone=member.phone or phone_norm,
+            member_name=member.name or '',
+        )
         PhoneSmsVerification.objects.filter(phone=phone_norm).delete()
         tokens = create_public_jwt_tokens(member)
         AuditLog.objects.create(
