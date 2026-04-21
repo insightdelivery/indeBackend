@@ -9,7 +9,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.core.cache import cache
+from django.db.models import F, Q
 from django.utils import timezone
 
 from sites.admin_api.articles.models import Article
@@ -24,6 +25,14 @@ from sites.public_api.article_preview import preview_content_html
 from sites.public_api.library_useractivity_views import _get_member
 from sites.public_api.content_share_service import resolve_share_token
 from core.utils import create_success_response, create_error_response
+
+
+def _public_client_ip(request):
+    """공개 상세 조회수 중복 억제용 클라이언트 IP (비디오 상세와 동일 규칙)."""
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR') or '0'
 
 
 def _article_share_entitlement(request, article_id: int) -> bool:
@@ -214,6 +223,7 @@ class PublicArticleDetailView(APIView):
     - 인증 선택: 유효 JWT(회원) → 본문 전체. 비회원 → content는 previewLength(0~100%)만큼만(태그 제거 후 글자 수 비율).
     - 응답 contentTruncated: 비회원이며 본문이 잘린 경우 true.
     - 발행된 글만 조회 (status SYS26209B021 또는 published, 삭제 미포함)
+    - 조회수: 동일 IP 기준 30초 내 1회만 article.viewCount 증가 (공개 비디오 상세와 동일)
     """
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -232,6 +242,13 @@ class PublicArticleDetailView(APIView):
                     create_error_response('아티클을 찾을 수 없습니다.', '01'),
                     status=status.HTTP_404_NOT_FOUND,
                 )
+
+            ip = _public_client_ip(request)
+            view_cache_key = f'public_article_detail_view:{id}:{ip}'
+            if not cache.get(view_cache_key):
+                Article.objects.filter(pk=article.pk).update(viewCount=F('viewCount') + 1)
+                cache.set(view_cache_key, 1, 30)
+            article.refresh_from_db(fields=['viewCount'])
 
             serializer = ArticleSerializer(article)
             data = serializer.data.copy()
