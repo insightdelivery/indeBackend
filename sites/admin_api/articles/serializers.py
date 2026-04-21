@@ -43,6 +43,7 @@ class ArticleSerializer(serializers.ModelSerializer):
             'highlightCount',
             'bookmarkCount',
             'questionCount',
+            'answeredQuestionCount',
             'tags',
             'previewLength',
             'scheduledAt',
@@ -58,6 +59,7 @@ class ArticleSerializer(serializers.ModelSerializer):
             'highlightCount',
             'bookmarkCount',
             'questionCount',
+            'answeredQuestionCount',
             'createdAt',
             'updatedAt',
         ]
@@ -101,10 +103,10 @@ class ArticleListSerializer(serializers.ModelSerializer):
         return int(obj.questionCount or 0)
 
     def get_answeredQuestionCount(self, obj):
-        """답변이 1건 이상인 질문 수(question_id distinct)."""
+        """답변이 1건 이상인 질문 수(question_id distinct). annotate 없으면 DB 백필 컬럼."""
         if hasattr(obj, 'answered_question_count'):
             return int(obj.answered_question_count)
-        return 0
+        return int(getattr(obj, 'answeredQuestionCount', 0) or 0)
 
     def get_authorProfileImage(self, obj):
         """연결 ContentAuthor.profile_image (없으면 null). 공개 목록에서 presigned 처리는 뷰에서."""
@@ -153,6 +155,8 @@ class ArticleListSerializer(serializers.ModelSerializer):
             'commentCount',
             'highlightCount',
             'bookmarkCount',
+            'questionCount',
+            'answeredQuestionCount',
             'createdAt',
             'updatedAt',
         ]

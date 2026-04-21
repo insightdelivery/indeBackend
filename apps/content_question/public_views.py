@@ -24,6 +24,7 @@ from sites.admin_api.video.utils import get_presigned_thumbnail_url as video_pre
 from sites.public_api.authentication import PublicJWTAuthentication
 from sites.public_api.models import PublicMemberShip
 
+from apps.content_question.article_list_annotations import refresh_article_answered_question_count
 from .models import ContentQuestion, ContentQuestionAnswer
 from .serializers import (
     ContentQuestionPublicSerializer,
@@ -117,6 +118,9 @@ class ContentQuestionAnswerCreateView(APIView):
         # 첫 답변 등록 시 질문 잠금 (수정 불가 표시)
         if not question.is_locked:
             ContentQuestion.objects.filter(question_id=question_id).update(is_locked=True)
+
+        if content_type == ContentQuestionAnswer.CONTENT_TYPE_ARTICLE:
+            refresh_article_answered_question_count(content_id)
 
         return Response(
             create_success_response(
@@ -429,7 +433,11 @@ class ContentQuestionAnswerDetailView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
         qid = answer.question_id
+        ct = answer.content_type
+        cid = answer.content_id
         answer.delete()
+        if ct == ContentQuestionAnswer.CONTENT_TYPE_ARTICLE:
+            refresh_article_answered_question_count(cid)
         return Response(
             create_success_response({'question_id': qid}, '답변이 삭제되었습니다.'),
             status=status.HTTP_200_OK,

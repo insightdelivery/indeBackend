@@ -60,6 +60,11 @@ class Article(models.Model):
     highlightCount = models.IntegerField(default=0, verbose_name='하이라이트 수')
     bookmarkCount = models.IntegerField(default=0, verbose_name='북마크 수')
     questionCount = models.IntegerField(default=0, verbose_name='질문 수')
+    answeredQuestionCount = models.IntegerField(
+        default=0,
+        verbose_name='답변 완료 질문 수',
+        db_comment='답변이 1건 이상인 질문 수(question_id distinct). 질문당 여러 사용자 답변이 있어도 1로만 집계.',
+    )
     
     # 추가 정보 (질문은 content_question 테이블로 관리)
     tags = models.JSONField(default=list, blank=True, verbose_name='태그 목록')
