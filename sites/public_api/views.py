@@ -133,21 +133,31 @@ def _get_client_ip(request):
     return request.META.get('REMOTE_ADDR', '')
 
 
-def _apply_kakao_unverified_email(member, data):
+def _apply_profile_email_update(member, data):
     """
-    카카오 가입 + 이메일 미인증: 부가정보 단계에서 실제 이메일 등록.
+    요청 body의 email이 현재와 다르면 형식·중복 검사 후 member.email 갱신, email_verified=False.
+    카카오+이메일 미인증은 반드시 유효한 이메일이 body에 있어야 함.
     Returns (error Response or None, send_verification_after_save: bool).
-    Mutates member.email / email_verified when applicable.
     """
-    if member.joined_via != 'KAKAO' or member.email_verified:
+    raw = data.get('email') if isinstance(data.get('email'), str) else ''
+    raw = (raw or '').strip()
+    old_email = (member.email or '').lower()
+
+    if member.joined_via == 'KAKAO' and not member.email_verified:
+        if not raw:
+            return Response(
+                {'error': '이메일을 입력해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            ), False
+
+    if not raw:
+        if not (member.email or '').strip():
+            return Response(
+                {'error': '이메일을 입력해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            ), False
         return None, False
 
-    raw = (data.get('email') or '').strip()
-    if not raw:
-        return Response(
-            {'error': '이메일을 입력해 주세요.'},
-            status=status.HTTP_400_BAD_REQUEST,
-        ), False
     try:
         validate_email(raw)
     except ValidationError:
@@ -155,6 +165,7 @@ def _apply_kakao_unverified_email(member, data):
             {'error': '올바른 이메일 형식이 아닙니다.'},
             status=status.HTTP_400_BAD_REQUEST,
         ), False
+
     new_email = raw.lower()
     if new_email.endswith(f'@{PLACEHOLDER_EMAIL_DOMAIN}'):
         return Response(
@@ -162,8 +173,10 @@ def _apply_kakao_unverified_email(member, data):
             status=status.HTTP_400_BAD_REQUEST,
         ), False
 
-    old_email = (member.email or '').lower()
-    if PublicMemberShip.objects.filter(email=new_email).exclude(member_sid=member.member_sid).exists():
+    if new_email == old_email:
+        return None, False
+
+    if PublicMemberShip.objects.filter(email__iexact=new_email).exclude(member_sid=member.member_sid).exists():
         return Response(
             {'error': '이미 사용 중인 이메일입니다. 다른 이메일을 입력해 주세요.'},
             status=status.HTTP_400_BAD_REQUEST,
@@ -171,8 +184,7 @@ def _apply_kakao_unverified_email(member, data):
 
     member.email = new_email
     member.email_verified = False
-    send_mail = new_email != old_email
-    return None, send_mail
+    return None, True
 
 
 def _send_profile_verification_email(member):
@@ -333,6 +345,70 @@ class PublicLogoutView(APIView):
         return resp
 
 
+class OAuthPendingClaimsView(APIView):
+    """POST /auth/oauth-pending-claims — temp_token 검증 후 JWT에 담긴 SNS 예비 프로필(프리필용)."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        temp_token = (request.data.get('temp_token') or request.data.get('tempToken') or '').strip()
+        payload = verify_oauth_pending_token(temp_token)
+        if not payload:
+            return Response(
+                {'error': '유효하지 않거나 만료된 가입 세션입니다. 다시 소셜 로그인을 시도해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        email = (payload.get('email') or '').strip()
+        name = (payload.get('name') or '').strip()
+        nickname = (payload.get('nickname') or '').strip()
+        provider = (payload.get('provider') or '').upper()
+        kakao_ph = provider == 'KAKAO' and email.lower().endswith(f'@{PLACEHOLDER_EMAIL_DOMAIN}')
+        return Response(
+            {
+                'email': email,
+                'name': name,
+                'nickname': nickname,
+                'provider': provider,
+                'kakao_placeholder_email': kakao_ph,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class SignupEmailAvailabilityView(APIView):
+    """POST /auth/signup-email-availability — 비로그인 SNS 가입 단계에서 이메일 중복 여부."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        raw = (request.data.get('email') or '').strip()
+        if not raw:
+            return Response(
+                {'available': False, 'error': '이메일을 입력해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            validate_email(raw)
+        except ValidationError:
+            return Response(
+                {'available': False, 'error': '올바른 이메일 형식이 아닙니다.'},
+                status=status.HTTP_200_OK,
+            )
+        el = raw.lower()
+        if el.endswith(f'@{PLACEHOLDER_EMAIL_DOMAIN}'):
+            return Response(
+                {'available': False, 'error': '본인 이메일 주소를 입력해 주세요.'},
+                status=status.HTTP_200_OK,
+            )
+        taken = PublicMemberShip.objects.filter(email__iexact=el).exists()
+        if taken:
+            return Response(
+                {'available': False, 'error': '이미 사용 중인 이메일입니다.'},
+                status=status.HTTP_200_OK,
+            )
+        return Response({'available': True}, status=status.HTTP_200_OK)
+
+
 class OAuthCompleteSignupView(APIView):
     """SNS 최초 가입: temp_token(oauth_pending JWT) + 휴대폰 SMS 인증 완료 후 회원 생성 및 JWT (userJoinPlan)."""
 
@@ -373,19 +449,47 @@ class OAuthCompleteSignupView(APIView):
             return Response({'error': '유효하지 않은 가입 세션입니다.'}, status=status.HTTP_400_BAD_REQUEST)
         if PublicMemberShip.objects.filter(joined_via=provider, sns_provider_uid=pid).exists():
             return Response({'error': '이미 가입된 소셜 계정입니다.'}, status=status.HTTP_400_BAD_REQUEST)
-        email = (payload.get('email') or '').strip()
+        payload_email = (payload.get('email') or '').strip()
+        req_email = (request.data.get('email') or '').strip()
+        email = req_email or payload_email
         if not email:
             return Response(
                 {'error': '이메일 정보가 없습니다. 다시 소셜 로그인을 시도해 주세요.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if PublicMemberShip.objects.filter(email__iexact=email).exists():
+        try:
+            validate_email(email)
+        except ValidationError:
+            return Response(
+                {'error': '올바른 이메일 형식이 아닙니다.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        el = email.lower()
+        if el.endswith(f'@{PLACEHOLDER_EMAIL_DOMAIN}'):
+            return Response(
+                {'error': '본인 이메일 주소를 입력해 주세요.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if PublicMemberShip.objects.filter(email__iexact=el).exists():
             return Response({'error': '이미 사용 중인 이메일입니다.'}, status=status.HTTP_400_BAD_REQUEST)
-        name = (payload.get('name') or 'User').strip()[:100]
-        nickname = (payload.get('nickname') or name).strip()[:100]
+        raw_name = (request.data.get('name') or '').strip()
+        name = (raw_name or (payload.get('name') or '').strip() or 'User')[:100]
+        if not name.strip():
+            name = 'User'
+        raw_nick = (request.data.get('nickname') or '').strip()
+        nickname = (raw_nick or (payload.get('nickname') or '').strip() or name)[:100]
+        if not nickname.strip():
+            nickname = name
         email_verified = True
-        if provider == 'KAKAO' and email.lower().endswith(f'@{PLACEHOLDER_EMAIL_DOMAIN}'):
-            email_verified = False
+        raw_news = request.data.get('newsletter_agree')
+        if raw_news is None:
+            newsletter_agree = True
+        elif isinstance(raw_news, bool):
+            newsletter_agree = raw_news
+        elif isinstance(raw_news, str):
+            newsletter_agree = raw_news.strip().lower() in ('1', 'true', 'yes', 'y')
+        else:
+            newsletter_agree = bool(raw_news)
         try:
             member = PublicMemberShip(
                 email=email,
@@ -398,6 +502,7 @@ class OAuthCompleteSignupView(APIView):
                 email_verified=email_verified,
                 profile_completed=True,
                 is_active=True,
+                newsletter_agree=newsletter_agree,
             )
             member.save()
         except Exception as e:
@@ -528,7 +633,7 @@ class MeView(APIView):
         if not member:
             return Response({'detail': '인증이 필요합니다.'}, status=status.HTTP_401_UNAUTHORIZED)
         data = request.data
-        err, send_verification = _apply_kakao_unverified_email(member, data)
+        err, send_verification = _apply_profile_email_update(member, data)
         if err:
             return err
         name = (data.get('name') or '').strip()
@@ -587,6 +692,45 @@ class MeView(APIView):
         return Response(_user_response(member), status=status.HTTP_200_OK)
 
 
+class MeEmailAvailabilityView(APIView):
+    """GET /me/email-availability?email= — JWT(access) 필수, 타 회원과 중복 여부만 조회"""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        token = get_token_from_request(request)
+        payload = verify_jwt_token(token, token_type='access') if token else None
+        if not payload:
+            return Response({'detail': '인증이 필요합니다.'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            member = PublicMemberShip.objects.get(member_sid=int(payload.get('user_id')), is_active=True)
+        except (PublicMemberShip.DoesNotExist, ValueError, TypeError):
+            return Response({'detail': '사용자를 찾을 수 없습니다.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        raw = (request.query_params.get('email') or '').strip()
+        if not raw:
+            return Response({'available': False, 'error': '이메일을 입력해 주세요.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            validate_email(raw)
+        except ValidationError:
+            return Response({'available': False, 'error': '올바른 이메일 형식이 아닙니다.'}, status=status.HTTP_200_OK)
+
+        el = raw.lower()
+        if el.endswith(f'@{PLACEHOLDER_EMAIL_DOMAIN}'):
+            return Response({'available': False, 'error': '사용할 수 없는 이메일입니다.'}, status=status.HTTP_200_OK)
+
+        if el == (member.email or '').lower():
+            return Response({'available': True}, status=status.HTTP_200_OK)
+
+        taken = PublicMemberShip.objects.filter(email__iexact=el).exclude(member_sid=member.member_sid).exists()
+        if taken:
+            return Response(
+                {'available': False, 'error': '이미 사용 중인 이메일입니다.'},
+                status=status.HTTP_200_OK,
+            )
+        return Response({'available': True}, status=status.HTTP_200_OK)
+
+
 class VerifyProfilePasswordView(APIView):
     """
     마이페이지 회원정보 수정 전 본인 확인 — JWT(access) 필수, 비밀번호만 검증.
@@ -637,7 +781,7 @@ class ProfileCompleteView(APIView):
         except (PublicMemberShip.DoesNotExist, ValueError, TypeError):
             return Response({'detail': '사용자를 찾을 수 없습니다.'}, status=status.HTTP_401_UNAUTHORIZED)
         data = request.data
-        err, send_verification = _apply_kakao_unverified_email(member, data)
+        err, send_verification = _apply_profile_email_update(member, data)
         if err:
             return err
         name = (data.get('name') or '').strip()
