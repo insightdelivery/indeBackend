@@ -58,6 +58,7 @@ class Article(models.Model):
     allowComment = models.BooleanField(default=True, verbose_name='댓글 허용', db_comment='댓글 허용 여부 (true=표시/작성 가능)')
     commentCount = models.IntegerField(default=0, verbose_name='댓글 수')
     highlightCount = models.IntegerField(default=0, verbose_name='하이라이트 수')
+    bookmarkCount = models.IntegerField(default=0, verbose_name='북마크 수')
     questionCount = models.IntegerField(default=0, verbose_name='질문 수')
     
     # 추가 정보 (질문은 content_question 테이블로 관리)

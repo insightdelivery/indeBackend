@@ -6,6 +6,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
+
+from apps.content_question.article_list_annotations import annotate_article_question_counts
 from django.core.paginator import Paginator
 from datetime import datetime
 import logging
@@ -127,9 +129,11 @@ class ArticleListView(APIView):
                     Q(subtitle__icontains=search)
                 )
             
+            queryset = annotate_article_question_counts(queryset)
+
             # 정렬 (최신순)
             queryset = queryset.order_by('-createdAt')
-            
+
             # 페이지네이션
             paginator = Paginator(queryset, page_size)
             page_obj = paginator.get_page(page)
@@ -907,8 +911,10 @@ class ArticleExportView(APIView):
                     Q(subtitle__icontains=search)
                 )
             
+            queryset = annotate_article_question_counts(queryset)
+
             queryset = queryset.order_by('-createdAt')
-            
+
             # 시리얼라이저
             serializer = ArticleListSerializer(queryset, many=True)
             articles_data = serializer.data

@@ -85,6 +85,7 @@ class Video(models.Model):
     viewCount = models.IntegerField(default=0, verbose_name='조회수')
     rating = models.FloatField(null=True, blank=True, verbose_name='평점')
     commentCount = models.IntegerField(default=0, verbose_name='댓글 수')
+    bookmarkCount = models.IntegerField(default=0, verbose_name='북마크 수')
     
     # 추가 정보
     tags = models.JSONField(default=list, blank=True, verbose_name='태그 목록')

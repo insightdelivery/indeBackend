@@ -89,6 +89,10 @@ class ContentQuestionAnswer(models.Model):
         indexes = [
             models.Index(fields=['question_id'], name='idx_cqa_question'),
             models.Index(fields=['content_type', 'content_id'], name='idx_cqa_content'),
+            models.Index(
+                fields=['content_type', 'content_id', 'question_id'],
+                name='idx_cqa_content_question',
+            ),
         ]
 
     def __str__(self):

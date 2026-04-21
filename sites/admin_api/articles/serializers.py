@@ -41,6 +41,7 @@ class ArticleSerializer(serializers.ModelSerializer):
             'allowComment',
             'commentCount',
             'highlightCount',
+            'bookmarkCount',
             'questionCount',
             'tags',
             'previewLength',
@@ -50,7 +51,16 @@ class ArticleSerializer(serializers.ModelSerializer):
             'createdAt',
             'updatedAt',
         ]
-        read_only_fields = ['id', 'viewCount', 'commentCount', 'highlightCount', 'questionCount', 'createdAt', 'updatedAt']
+        read_only_fields = [
+            'id',
+            'viewCount',
+            'commentCount',
+            'highlightCount',
+            'bookmarkCount',
+            'questionCount',
+            'createdAt',
+            'updatedAt',
+        ]
     
     def validate_title(self, value):
         """제목 검증"""
@@ -81,6 +91,20 @@ class ArticleListSerializer(serializers.ModelSerializer):
     """아티클 목록 시리얼라이저 (간소화된 필드)"""
 
     authorProfileImage = serializers.SerializerMethodField()
+    questionCount = serializers.SerializerMethodField()
+    answeredQuestionCount = serializers.SerializerMethodField()
+
+    def get_questionCount(self, obj):
+        """content_question 기준 등록 질문 수(annotate 미적용 시 DB 컬럼)."""
+        if hasattr(obj, 'applied_question_count'):
+            return int(obj.applied_question_count)
+        return int(obj.questionCount or 0)
+
+    def get_answeredQuestionCount(self, obj):
+        """답변이 1건 이상인 질문 수(question_id distinct)."""
+        if hasattr(obj, 'answered_question_count'):
+            return int(obj.answered_question_count)
+        return 0
 
     def get_authorProfileImage(self, obj):
         """연결 ContentAuthor.profile_image (없으면 null). 공개 목록에서 presigned 처리는 뷰에서."""
@@ -112,7 +136,9 @@ class ArticleListSerializer(serializers.ModelSerializer):
             'allowComment',
             'commentCount',
             'highlightCount',
+            'bookmarkCount',
             'questionCount',
+            'answeredQuestionCount',
             'tags',
             'previewLength',
             'scheduledAt',
@@ -121,7 +147,15 @@ class ArticleListSerializer(serializers.ModelSerializer):
             'createdAt',
             'updatedAt',
         ]
-        read_only_fields = ['id', 'viewCount', 'commentCount', 'highlightCount', 'questionCount', 'createdAt', 'updatedAt']
+        read_only_fields = [
+            'id',
+            'viewCount',
+            'commentCount',
+            'highlightCount',
+            'bookmarkCount',
+            'createdAt',
+            'updatedAt',
+        ]
 
 
 class ArticleCreateSerializer(serializers.ModelSerializer):

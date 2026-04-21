@@ -67,6 +67,7 @@ class VideoSerializer(serializers.ModelSerializer):
             'viewCount',
             'rating',
             'commentCount',
+            'bookmarkCount',
             'tags',
             'questions',
             'attachments',
@@ -81,6 +82,7 @@ class VideoSerializer(serializers.ModelSerializer):
             'displayId',
             'viewCount',
             'commentCount',
+            'bookmarkCount',
             'createdAt',
             'updatedAt',
         ]
@@ -163,6 +165,7 @@ class VideoListSerializer(serializers.ModelSerializer):
             'viewCount',
             'rating',
             'commentCount',
+            'bookmarkCount',
             'scheduledAt',
             'deletedAt',
             'deletedBy',
@@ -174,6 +177,7 @@ class VideoListSerializer(serializers.ModelSerializer):
             'displayId',
             'viewCount',
             'commentCount',
+            'bookmarkCount',
             'createdAt',
             'updatedAt',
         ]
