@@ -105,6 +105,8 @@ DATABASES = {
         "PORT": os.getenv("DB_PORT", "3306"),
         "OPTIONS": {
             "charset": "utf8mb4",
+            # MySQL 1267(collation mix) 방지: 연결·리터럴·CAST 결과를 utf8mb4_unicode_ci로 통일
+            "init_command": "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
         },
     }
 }
