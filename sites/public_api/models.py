@@ -176,6 +176,78 @@ class PublicUserActivityLog(models.Model):
         return f"{self.user_id} {self.activity_type} {self.content_type}:{self.content_code}"
 
 
+class SiteVisitEvent(models.Model):
+    """
+    사이트 단위 방문 이벤트 (테이블: siteVisitEvent)
+    - siteInputDataPlan.md: www 첫 로드 등 1행 1이벤트, 집계용 visitDate·channel
+    - 콘텐츠 조회(publicUserActivityLog VIEW)와 별도 지표
+    """
+
+    CHANNEL_DIRECT = "direct"
+    CHANNEL_SHARE_LINK = "share_link"
+    CHANNEL_CHOICES = [
+        (CHANNEL_DIRECT, "일반"),
+        (CHANNEL_SHARE_LINK, "공유 링크"),
+    ]
+
+    site_visit_event_id = models.BigAutoField(
+        primary_key=True,
+        db_column="siteVisitEventId",
+        verbose_name="사이트 방문 이벤트 PK",
+    )
+    occurred_at = models.DateTimeField(
+        auto_now_add=True,
+        db_column="occurredAt",
+        verbose_name="서버 기록 시각",
+    )
+    visit_date = models.DateField(db_column="visitDate", verbose_name="집계용 일자(로컬)")
+    channel = models.CharField(
+        max_length=20,
+        choices=CHANNEL_CHOICES,
+        db_column="channel",
+        verbose_name="유입 채널",
+    )
+    visitor_key = models.CharField(
+        max_length=40,
+        db_column="visitorKey",
+        verbose_name="익명 방문자 키(UUID)",
+    )
+    path = models.CharField(
+        max_length=400,
+        blank=True,
+        default="",
+        db_column="path",
+        verbose_name="랜딩 path+query 일부",
+    )
+    user_agent = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        db_column="userAgent",
+        verbose_name="User-Agent 앞부분",
+    )
+    ip_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        db_column="ipHash",
+        verbose_name="접속 IP 해시",
+    )
+
+    class Meta:
+        db_table = "siteVisitEvent"
+        verbose_name = "사이트 방문 이벤트"
+        verbose_name_plural = "사이트 방문 이벤트"
+        ordering = ["-occurred_at"]
+        indexes = [
+            models.Index(fields=["visit_date"], name="idx_siteVisit_visitDate"),
+            models.Index(fields=["visit_date", "channel"], name="idx_siteVisit_date_ch"),
+        ]
+
+    def __str__(self):
+        return f"{self.visit_date} {self.channel} {self.visitor_key[:8]}…"
+
+
 class ContentRankingCache(models.Model):
     """
     일별 콘텐츠 랭킹 캐시 (테이블: content_ranking_cache)

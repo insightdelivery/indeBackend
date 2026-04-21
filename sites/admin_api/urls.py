@@ -62,6 +62,8 @@ def get_urlpatterns():
         path('video', include('sites.admin_api.video.urls')),
         path('files/', include('sites.admin_api.files.urls')),
         path('files', include('sites.admin_api.files.urls')),
+        path('dashboard/', include('sites.admin_api.dashboard.urls')),
+        path('dashboard', include('sites.admin_api.dashboard.urls')),
         path('content/questions/', include('apps.content_question.admin_urls')),
         path('content/questions', include('apps.content_question.admin_urls')),
         path('board/', include('sites.admin_api.board.urls')),

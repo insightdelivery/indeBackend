@@ -300,6 +300,9 @@ class LoginView(APIView):
                 'error': '이메일 또는 비밀번호가 올바르지 않습니다.'
             }, status=status.HTTP_401_UNAUTHORIZED)
 
+        member.last_login = timezone.now()
+        member.save(update_fields=['last_login'])
+
         tokens = create_public_jwt_tokens(member)
         AuditLog.objects.create(
             user_id=member.member_sid,

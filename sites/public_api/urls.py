@@ -40,6 +40,7 @@ from sites.public_api.google_oauth import GoogleRedirectView, GoogleCallbackView
 from sites.public_api.naver_oauth import NaverRedirectView, NaverCallbackView
 from sites.public_api.kakao_oauth import KakaoRedirectView, KakaoCallbackView
 from sites.public_api.homepage_doc_views import PublicHomepageDocDetailView
+from sites.public_api.site_visit_views import SiteVisitRecordView
 from sites.public_api.library_useractivity_views import (
     LibraryUserActivityView,
     LibraryUserActivityShare,
@@ -172,6 +173,8 @@ urlpatterns = [
     path('api/', include('apps.content_comments.public_urls')),
     path('api', include('apps.content_comments.public_urls')),
     # 라이브러리 사용자 활동 (userPublicActiviteLog.md)
+    path('api/site-visits', SiteVisitRecordView.as_view()),
+    path('api/site-visits/', SiteVisitRecordView.as_view()),
     path('api/library/useractivity/view', LibraryUserActivityView.as_view()),
     path('api/library/useractivity/view/', LibraryUserActivityView.as_view()),
     path('api/library/useractivity/share', LibraryUserActivityShare.as_view()),
