@@ -312,6 +312,19 @@ _RUNSERVER_ACCESS_LEVEL = (
     else "WARNING"
 )
 
+# 로그 디렉터리 (FileHandler / TimedRotatingFileHandler가 파일 생성 전에 필요)
+(BASE_DIR / 'logs').mkdir(parents=True, exist_ok=True)
+
+# 로깅 설정 — 파일은 자정마다 회전되어 `django.log.YYYY-MM-DD` 형태로 보관
+_LOG_FILE_COMMON = {
+    'formatter': 'verbose',
+    'encoding': 'utf-8',
+    'when': 'midnight',
+    'interval': 1,
+    'backupCount': 90,
+    'utc': False,
+}
+
 # 로깅 설정
 LOGGING = {
     'version': 1,
@@ -332,9 +345,14 @@ LOGGING = {
             'formatter': 'verbose',
         },
         'file': {
-            'class': 'logging.FileHandler',
+            'class': 'logging.handlers.TimedRotatingFileHandler',
             'filename': os.path.join(BASE_DIR, 'logs', 'django.log'),
-            'formatter': 'verbose',
+            **_LOG_FILE_COMMON,
+        },
+        'profile_update_file': {
+            'class': 'logging.handlers.TimedRotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'profile_update.log'),
+            **_LOG_FILE_COMMON,
         },
     },
     'root': {
@@ -374,6 +392,11 @@ LOGGING = {
         },
         'sites.admin_api.messages': {
             'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'inde.profile_update': {
+            'handlers': ['console', 'profile_update_file'],
             'level': 'INFO',
             'propagate': False,
         },

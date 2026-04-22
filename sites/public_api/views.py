@@ -30,6 +30,26 @@ from sites.public_api.kakao_oauth import PLACEHOLDER_EMAIL_DOMAIN
 from sites.public_api.signup_alimtalk import try_send_signup_complete_alimtalk
 
 logger = logging.getLogger(__name__)
+profile_update_logger = logging.getLogger('inde.profile_update')
+
+
+def _log_profile_update_400(request, member, endpoint: str, reason_code: str, response: Response) -> None:
+    """회원정보 수정 거부(400) — 운영에서 원인 추적용. 비밀번호·원문 이메일은 기록하지 않음."""
+    try:
+        body = response.data if isinstance(getattr(response, 'data', None), dict) else {}
+    except Exception:
+        body = {}
+    msg = (body.get('error') or body.get('detail') or '')[:500]
+    profile_update_logger.warning(
+        '[profile_update_400] endpoint=%s reason=%s member_sid=%s joined_via=%s email_verified=%s ip=%s api_message=%s',
+        endpoint,
+        reason_code,
+        getattr(member, 'member_sid', None) if member else None,
+        getattr(member, 'joined_via', None) if member else None,
+        getattr(member, 'email_verified', None) if member else None,
+        _get_client_ip(request) if request else '',
+        msg,
+    )
 
 
 def _jwt_login_response(request, tokens: dict, user_payload: dict, status_code: int) -> Response:
@@ -56,7 +76,9 @@ def _jwt_login_response(request, tokens: dict, user_payload: dict, status_code: 
 PROFILE_PHONE_VERIFY_MAX_AGE_SEC = 15 * 60
 
 
-def _check_profile_phone_verified_for_change(member: PublicMemberShip, new_phone_stripped: str):
+def _check_profile_phone_verified_for_change(
+    request, member: PublicMemberShip, new_phone_stripped: str, endpoint: str
+):
     """
     저장하려는 번호가 기존과 다르면 profile_phone SMS 인증 필수.
     통과 시 None, 실패 시 Response.
@@ -66,10 +88,12 @@ def _check_profile_phone_verified_for_change(member: PublicMemberShip, new_phone
     if old_norm == new_norm:
         return None
     if not is_valid_kr_mobile(new_norm):
-        return Response(
+        r = Response(
             {'error': '올바른 휴대폰 번호를 입력해 주세요.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
+        _log_profile_update_400(request, member, endpoint, 'phone_invalid_format', r)
+        return r
     row = (
         PhoneSmsVerification.objects.filter(
             phone=new_norm,
@@ -81,15 +105,19 @@ def _check_profile_phone_verified_for_change(member: PublicMemberShip, new_phone
         .first()
     )
     if not row:
-        return Response(
+        r = Response(
             {'error': '변경된 휴대폰 번호는 문자 인증 후 저장할 수 있습니다.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
+        _log_profile_update_400(request, member, endpoint, 'phone_sms_not_verified', r)
+        return r
     if (timezone.now() - row.verified_at) > timedelta(seconds=PROFILE_PHONE_VERIFY_MAX_AGE_SEC):
-        return Response(
+        r = Response(
             {'error': '휴대폰 인증이 만료되었습니다. 인증번호를 다시 요청해 주세요.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
+        _log_profile_update_400(request, member, endpoint, 'phone_sms_expired', r)
+        return r
     return None
 
 
@@ -134,7 +162,7 @@ def _get_client_ip(request):
     return request.META.get('REMOTE_ADDR', '')
 
 
-def _apply_profile_email_update(member, data):
+def _apply_profile_email_update(request, member, data, endpoint: str):
     """
     요청 body의 email이 현재와 다르면 형식·중복 검사 후 member.email 갱신, email_verified=False.
     카카오+이메일 미인증은 반드시 유효한 이메일이 body에 있어야 함.
@@ -146,42 +174,52 @@ def _apply_profile_email_update(member, data):
 
     if member.joined_via == 'KAKAO' and not member.email_verified:
         if not raw:
-            return Response(
+            r = Response(
                 {'error': '이메일을 입력해 주세요.'},
                 status=status.HTTP_400_BAD_REQUEST,
-            ), False
+            )
+            _log_profile_update_400(request, member, endpoint, 'email_required_kakao_unverified', r)
+            return r, False
 
     if not raw:
         if not (member.email or '').strip():
-            return Response(
+            r = Response(
                 {'error': '이메일을 입력해 주세요.'},
                 status=status.HTTP_400_BAD_REQUEST,
-            ), False
+            )
+            _log_profile_update_400(request, member, endpoint, 'email_required_empty', r)
+            return r, False
         return None, False
 
     try:
         validate_email(raw)
     except ValidationError:
-        return Response(
+        r = Response(
             {'error': '올바른 이메일 형식이 아닙니다.'},
             status=status.HTTP_400_BAD_REQUEST,
-        ), False
+        )
+        _log_profile_update_400(request, member, endpoint, 'email_invalid_format', r)
+        return r, False
 
     new_email = raw.lower()
     if new_email.endswith(f'@{PLACEHOLDER_EMAIL_DOMAIN}'):
-        return Response(
+        r = Response(
             {'error': '본인 이메일 주소를 입력해 주세요.'},
             status=status.HTTP_400_BAD_REQUEST,
-        ), False
+        )
+        _log_profile_update_400(request, member, endpoint, 'email_placeholder_domain', r)
+        return r, False
 
     if new_email == old_email:
         return None, False
 
     if PublicMemberShip.objects.filter(email__iexact=new_email).exclude(member_sid=member.member_sid).exists():
-        return Response(
+        r = Response(
             {'error': '이미 사용 중인 이메일입니다. 다른 이메일을 입력해 주세요.'},
             status=status.HTTP_400_BAD_REQUEST,
-        ), False
+        )
+        _log_profile_update_400(request, member, endpoint, 'email_duplicate', r)
+        return r, False
 
     member.email = new_email
     member.email_verified = False
@@ -643,33 +681,39 @@ class MeView(APIView):
         if not member:
             return Response({'detail': '인증이 필요합니다.'}, status=status.HTTP_401_UNAUTHORIZED)
         data = request.data
-        err, send_verification = _apply_profile_email_update(member, data)
+        err, send_verification = _apply_profile_email_update(request, member, data, 'PATCH /me/')
         if err:
             return err
         name = (data.get('name') or '').strip()
         nickname = (data.get('nickname') or '').strip()
         phone = (data.get('phone') or '').strip()
         if not name or not nickname or not phone:
-            return Response(
+            r = Response(
                 {'error': '이름, 닉네임, 휴대폰 번호는 필수입니다.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        phone_err = _check_profile_phone_verified_for_change(member, phone)
+            _log_profile_update_400(request, member, 'PATCH /me/', 'name_nickname_phone_required', r)
+            return r
+        phone_err = _check_profile_phone_verified_for_change(request, member, phone, 'PATCH /me/')
         if phone_err:
             return phone_err
         old_phone_norm = normalize_phone_kr(member.phone or '')
         raw_pw = (data.get('password') or '').strip()
         if raw_pw:
             if member.joined_via != 'LOCAL':
-                return Response(
+                r = Response(
                     {'error': '소셜 가입 계정은 비밀번호를 변경할 수 없습니다.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+                _log_profile_update_400(request, member, 'PATCH /me/', 'password_social_not_allowed', r)
+                return r
             if len(raw_pw) < 8:
-                return Response(
+                r = Response(
                     {'error': '비밀번호는 8자 이상 입력해 주세요.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+                _log_profile_update_400(request, member, 'PATCH /me/', 'password_too_short', r)
+                return r
             member.password = make_password(raw_pw)
         member.name = name[:100]
         member.nickname = nickname[:100]
@@ -791,33 +835,39 @@ class ProfileCompleteView(APIView):
         except (PublicMemberShip.DoesNotExist, ValueError, TypeError):
             return Response({'detail': '사용자를 찾을 수 없습니다.'}, status=status.HTTP_401_UNAUTHORIZED)
         data = request.data
-        err, send_verification = _apply_profile_email_update(member, data)
+        err, send_verification = _apply_profile_email_update(request, member, data, 'PUT /profile/complete/')
         if err:
             return err
         name = (data.get('name') or '').strip()
         nickname = (data.get('nickname') or '').strip()
         phone = (data.get('phone') or '').strip()
         if not name or not nickname or not phone:
-            return Response(
+            r = Response(
                 {'error': '이름, 닉네임, 휴대폰 번호는 필수입니다.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        phone_err = _check_profile_phone_verified_for_change(member, phone)
+            _log_profile_update_400(request, member, 'PUT /profile/complete/', 'name_nickname_phone_required', r)
+            return r
+        phone_err = _check_profile_phone_verified_for_change(request, member, phone, 'PUT /profile/complete/')
         if phone_err:
             return phone_err
         old_phone_norm = normalize_phone_kr(member.phone or '')
         raw_pw = (data.get('password') or '').strip()
         if raw_pw:
             if member.joined_via != 'LOCAL':
-                return Response(
+                r = Response(
                     {'error': '소셜 가입 계정은 비밀번호를 변경할 수 없습니다.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+                _log_profile_update_400(request, member, 'PUT /profile/complete/', 'password_social_not_allowed', r)
+                return r
             if len(raw_pw) < 8:
-                return Response(
+                r = Response(
                     {'error': '비밀번호는 8자 이상 입력해 주세요.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+                _log_profile_update_400(request, member, 'PUT /profile/complete/', 'password_too_short', r)
+                return r
             member.password = make_password(raw_pw)
         member.name = name[:100]
         member.nickname = nickname[:100]
