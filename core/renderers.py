@@ -35,8 +35,10 @@ class IndeJSONRenderer(JSONRenderer):
         response = renderer_context.get('response') if renderer_context else None
         status_code = response.status_code if response else status.HTTP_200_OK
         
-        # 이미 IndeAPIResponse 형식인 경우 그대로 반환
-        if isinstance(data, dict) and 'IndeAPIResponse' in data:
+        # 이미 최종 래핑 형식이면 그대로 반환 (newsLetterModelPlan.md §2-4 b2n2027ApiResponse)
+        if isinstance(data, dict) and (
+            'IndeAPIResponse' in data or 'b2n2027ApiResponse' in data
+        ):
             return super().render(data, accepted_media_type, renderer_context)
         
         # 상태 코드에 따라 ErrorCode와 Message 결정

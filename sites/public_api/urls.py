@@ -44,6 +44,8 @@ from sites.public_api.naver_oauth import NaverRedirectView, NaverCallbackView
 from sites.public_api.kakao_oauth import KakaoRedirectView, KakaoCallbackView
 from sites.public_api.homepage_doc_views import PublicHomepageDocDetailView
 from sites.public_api.site_visit_views import SiteVisitRecordView
+from sites.public_api.newsletter_views import NewsletterSubscribeView
+from sites.public_api.curation_views import PublicCurationListView
 from sites.public_api.library_useractivity_views import (
     LibraryUserActivityView,
     LibraryUserActivityShare,
@@ -184,6 +186,10 @@ urlpatterns = [
     # 라이브러리 사용자 활동 (userPublicActiviteLog.md)
     path('api/site-visits', SiteVisitRecordView.as_view()),
     path('api/site-visits/', SiteVisitRecordView.as_view()),
+    path('api/newsletter/subscribe', NewsletterSubscribeView.as_view()),
+    path('api/newsletter/subscribe/', NewsletterSubscribeView.as_view()),
+    path('api/curation/list', PublicCurationListView.as_view()),
+    path('api/curation/list/', PublicCurationListView.as_view()),
     path('api/library/useractivity/view', LibraryUserActivityView.as_view()),
     path('api/library/useractivity/view/', LibraryUserActivityView.as_view()),
     path('api/library/useractivity/share', LibraryUserActivityShare.as_view()),

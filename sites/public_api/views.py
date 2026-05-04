@@ -28,6 +28,7 @@ from sites.public_api.jwt_cookies import attach_public_refresh_cookie, clear_pub
 from sites.public_api import email_verification
 from sites.public_api.kakao_oauth import PLACEHOLDER_EMAIL_DOMAIN
 from sites.public_api.signup_alimtalk import try_send_signup_complete_alimtalk
+from sites.public_api.newsletter_service import sync_newsletter_subscriber_after_signup
 
 logger = logging.getLogger(__name__)
 profile_update_logger = logging.getLogger('inde.profile_update')
@@ -287,6 +288,12 @@ class RegisterView(APIView):
             )
             member.set_password(data['password'])
             member.save()
+
+            sync_newsletter_subscriber_after_signup(
+                member,
+                ip_address=_get_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', '') or '',
+            )
 
             try_send_signup_complete_alimtalk(
                 phone=member.phone or phone_norm,
@@ -555,6 +562,11 @@ class OAuthCompleteSignupView(APIView):
                 {'error': '회원 가입 처리 중 오류가 발생했습니다.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        sync_newsletter_subscriber_after_signup(
+            member,
+            ip_address=_get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '') or '',
+        )
         try_send_signup_complete_alimtalk(
             phone=member.phone or phone_norm,
             member_name=member.name or '',

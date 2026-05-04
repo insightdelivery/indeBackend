@@ -8,4 +8,5 @@ django-cors-headers==4.3.1
 cryptography>=41.0.0  # PyMySQL 의존성
 django-filter==24.3  # 필터링 기능 (Django 5.0 호환)
 requests>=2.31.0  # Cloudflare Stream API 호출용
+openpyxl>=3.1.0  # 뉴스레터 통합 엑셀(newsLetterModelPlan.md §5)
 

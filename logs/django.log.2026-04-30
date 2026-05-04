@@ -1,0 +1,17 @@
+INFO 2026-04-30 21:04:05,311 autoreload 19856 8712401152 Watching for file changes with StatReloader
+INFO 2026-04-30 21:05:26,777 autoreload 25303 8712401152 Watching for file changes with StatReloader
+INFO 2026-04-30 21:05:48,164 autoreload 26106 8712401152 Watching for file changes with StatReloader
+WARNING 2026-04-30 21:06:36,010 log 25303 6159380480 Unauthorized: /adminMember/tokenrefresh
+WARNING 2026-04-30 21:06:36,011 log 25303 6176206848 Unauthorized: /adminMember/tokenrefresh
+WARNING 2026-04-30 21:06:36,011 basehttp 25303 6159380480 "POST /adminMember/tokenrefresh HTTP/1.1" 401 153
+WARNING 2026-04-30 21:06:36,011 basehttp 25303 6176206848 "POST /adminMember/tokenrefresh HTTP/1.1" 401 153
+WARNING 2026-04-30 21:06:43,643 views 26106 6209155072 [tokenrefresh] 진입 Origin=http://localhost:3001 Referer=http://localhost:3001/ 기대쿠키명=refreshToken COOKIES_파싱키=[]
+WARNING 2026-04-30 21:06:43,644 views 26106 6209155072 [tokenrefresh] Raw Cookie 헤더 길이=0 앞400자=''
+WARNING 2026-04-30 21:06:43,644 views 26106 6209155072 [tokenrefresh] refresh 없음 → HTTP 400. body_keys=[] body_refresh_token_len=0 쿠키_refreshToken_존재=False
+WARNING 2026-04-30 21:06:43,646 log 26106 6209155072 Bad Request: /auth/tokenrefresh
+WARNING 2026-04-30 21:06:43,647 basehttp 26106 6209155072 "POST /auth/tokenrefresh HTTP/1.1" 400 114
+WARNING 2026-04-30 21:06:45,325 views 26106 6310113280 [tokenrefresh] 진입 Origin=http://localhost:3001 Referer=http://localhost:3001/ 기대쿠키명=refreshToken COOKIES_파싱키=[]
+WARNING 2026-04-30 21:06:45,326 views 26106 6310113280 [tokenrefresh] Raw Cookie 헤더 길이=0 앞400자=''
+WARNING 2026-04-30 21:06:45,327 views 26106 6310113280 [tokenrefresh] refresh 없음 → HTTP 400. body_keys=[] body_refresh_token_len=0 쿠키_refreshToken_존재=False
+WARNING 2026-04-30 21:06:45,327 log 26106 6310113280 Bad Request: /auth/tokenrefresh
+WARNING 2026-04-30 21:06:45,328 basehttp 26106 6310113280 "POST /auth/tokenrefresh HTTP/1.1" 400 114
