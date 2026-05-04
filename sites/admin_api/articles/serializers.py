@@ -3,12 +3,14 @@
 """
 from rest_framework import serializers
 from sites.admin_api.articles.models import Article
+from sites.admin_api.content_publish_dates import apply_published_at_on_content_update
 
 
 class ArticleSerializer(serializers.ModelSerializer):
     """아티클 시리얼라이저 (전체 필드)"""
 
     authorProfileImage = serializers.SerializerMethodField()
+    authorEditorIntro = serializers.SerializerMethodField()
 
     def get_authorProfileImage(self, obj):
         """연결된 ContentAuthor.profile_image (없으면 null). 공개 상세에서 presigned 처리."""
@@ -18,6 +20,14 @@ class ArticleSerializer(serializers.ModelSerializer):
         url = getattr(rel, 'profile_image', None) or ''
         url = url.strip()
         return url or None
+
+    def get_authorEditorIntro(self, obj):
+        rel = getattr(obj, 'author_id', None)
+        if rel is None:
+            return None
+        text = getattr(rel, 'editor_intro', None) or ''
+        text = text.strip()
+        return text or None
 
     class Meta:
         model = Article
@@ -32,6 +42,7 @@ class ArticleSerializer(serializers.ModelSerializer):
             'author',
             'author_id',
             'authorProfileImage',
+            'authorEditorIntro',
             'authorAffiliation',
             'visibility',
             'status',
@@ -47,6 +58,7 @@ class ArticleSerializer(serializers.ModelSerializer):
             'tags',
             'previewLength',
             'scheduledAt',
+            'publishedAt',
             'deletedAt',
             'deletedBy',
             'createdAt',
@@ -62,6 +74,7 @@ class ArticleSerializer(serializers.ModelSerializer):
             'answeredQuestionCount',
             'createdAt',
             'updatedAt',
+            'publishedAt',
         ]
     
     def validate_title(self, value):
@@ -93,6 +106,7 @@ class ArticleListSerializer(serializers.ModelSerializer):
     """아티클 목록 시리얼라이저 (간소화된 필드)"""
 
     authorProfileImage = serializers.SerializerMethodField()
+    authorEditorIntro = serializers.SerializerMethodField()
     questionCount = serializers.SerializerMethodField()
     answeredQuestionCount = serializers.SerializerMethodField()
 
@@ -117,6 +131,14 @@ class ArticleListSerializer(serializers.ModelSerializer):
         url = url.strip()
         return url or None
 
+    def get_authorEditorIntro(self, obj):
+        rel = getattr(obj, 'author_id', None)
+        if rel is None:
+            return None
+        text = getattr(rel, 'editor_intro', None) or ''
+        text = text.strip()
+        return text or None
+
     class Meta:
         model = Article
         fields = [
@@ -129,6 +151,7 @@ class ArticleListSerializer(serializers.ModelSerializer):
             'author',
             'author_id',
             'authorProfileImage',
+            'authorEditorIntro',
             'authorAffiliation',
             'visibility',
             'status',
@@ -144,6 +167,7 @@ class ArticleListSerializer(serializers.ModelSerializer):
             'tags',
             'previewLength',
             'scheduledAt',
+            'publishedAt',
             'deletedAt',
             'deletedBy',
             'createdAt',
@@ -159,6 +183,7 @@ class ArticleListSerializer(serializers.ModelSerializer):
             'answeredQuestionCount',
             'createdAt',
             'updatedAt',
+            'publishedAt',
         ]
 
 
@@ -308,4 +333,13 @@ class ArticleUpdateSerializer(serializers.ModelSerializer):
         if v and not (v.startswith('SYS') and len(v) >= 10):
             raise serializers.ValidationError('발행 상태는 sysCodeSid 형식이어야 합니다.')
         return v
+
+    def update(self, instance, validated_data):
+        apply_published_at_on_content_update(instance, validated_data)
+        published_at = validated_data.pop('publishedAt', serializers.empty)
+        instance = super().update(instance, validated_data)
+        if published_at is not serializers.empty:
+            instance.publishedAt = published_at
+            instance.save(update_fields=['publishedAt'])
+        return instance
 

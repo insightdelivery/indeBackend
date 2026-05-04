@@ -70,7 +70,13 @@ class Article(models.Model):
     tags = models.JSONField(default=list, blank=True, verbose_name='태그 목록')
     previewLength = models.IntegerField(null=True, blank=True, default=50, verbose_name='미리보기 길이')
     scheduledAt = models.DateTimeField(null=True, blank=True, verbose_name='예약 발행 일시')
-    
+    publishedAt = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='발행 일시',
+        db_comment='즉시 공개 시 등록 시각, 예약 시 scheduledAt, 크론 공개 시 예약 시각',
+    )
+
     # 삭제 정보 (소프트 삭제)
     deletedAt = models.DateTimeField(null=True, blank=True, verbose_name='삭제 일시')
     deletedBy = models.CharField(max_length=100, null=True, blank=True, verbose_name='삭제자')

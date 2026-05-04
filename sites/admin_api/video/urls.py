@@ -4,6 +4,7 @@
 from django.urls import path
 from sites.admin_api.video.views import (
     VideoListView,
+    VideoExportView,
     VideoDetailView,
     VideoCreateView,
     VideoBatchDeleteView,
@@ -23,7 +24,10 @@ urlpatterns = [
     # 비디오/세미나 목록 조회
     path('list/', VideoListView.as_view(), name='video_list'),
     path('list', VideoListView.as_view(), name='video_list_no_slash'),
-    
+
+    path('export/', VideoExportView.as_view(), name='video_export'),
+    path('export', VideoExportView.as_view(), name='video_export_no_slash'),
+
     # 비디오/세미나 생성
     path('create/', VideoCreateView.as_view(), name='video_create'),
     path('create', VideoCreateView.as_view(), name='video_create_no_slash'),

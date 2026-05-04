@@ -6,13 +6,24 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q, F
+from django.utils import timezone
 from django.core.cache import cache
+from openpyxl import Workbook
 from django.core.paginator import Paginator
 from datetime import datetime
 import logging
 
 from sites.admin_api.video.models import Video
-from sites.admin_api.content_publish_syscodes import VIDEO_STATUS_BATCH_ALLOWED, is_trash_status_filter
+from sites.admin_api.content_publish_syscodes import (
+    VIDEO_STATUS_BATCH_ALLOWED,
+    STATUS_PUBLISHED,
+    STATUS_SCHEDULED,
+    is_trash_status_filter,
+)
+from sites.admin_api.content_publish_dates import published_at_for_create
+from sites.admin_api.admin_export_xlsx import format_excel_datetime, xlsx_http_response
+from sites.admin_api.curation.curation_resolve import category_label
+from apps.content_question.video_export_stats import video_seminar_question_answer_pairs
 from sites.admin_api.video.serializers import (
     VideoSerializer,
     VideoListSerializer,
@@ -188,6 +199,152 @@ class VideoListView(APIView):
             return Response(
                 create_error_response(f'비디오/세미나 목록 조회 실패: {str(e)}'),
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class VideoExportView(APIView):
+    """
+    비디오/세미나 엑셀 다운로드 API
+    GET /video/export?contentType=video|seminar&… (목록과 동일 필터)
+    """
+
+    authentication_classes = [AdminJWTAuthentication]
+    permission_classes = [IsAuthenticated, MenuPermission]
+    menu_codes = VIDEO_SEMINAR_CODES
+
+    _HEADERS = (
+        '제목',
+        '부제',
+        '카테고리',
+        '작성자(에디터)',
+        '공개범위',
+        '별점',
+        '조회수',
+        '댓글수',
+        '하이라이트 수',
+        '질문(답변/전체)수',
+        '북마크수',
+        '등록일',
+    )
+
+    def get(self, request):
+        try:
+            start_date = request.query_params.get('startDate')
+            end_date = request.query_params.get('endDate')
+            content_type = (request.query_params.get('contentType') or 'video').strip().lower()
+            if content_type not in ('video', 'seminar'):
+                content_type = 'video'
+            category = request.query_params.get('category')
+            visibility = request.query_params.get('visibility')
+            status_filter = request.query_params.get('status')
+            search = request.query_params.get('search')
+            search_type = (request.query_params.get('searchType') or 'all').strip()
+            sort = (request.query_params.get('sort') or 'createdAt').strip()
+
+            if is_trash_status_filter(status_filter):
+                queryset = Video.objects.filter(deletedAt__isnull=False)
+            else:
+                queryset = Video.objects.filter(deletedAt__isnull=True)
+
+            if start_date:
+                try:
+                    start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+                    queryset = queryset.filter(createdAt__gte=start_datetime)
+                except ValueError:
+                    pass
+
+            if end_date:
+                try:
+                    end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
+                    end_datetime = end_datetime.replace(hour=23, minute=59, second=59)
+                    queryset = queryset.filter(createdAt__lte=end_datetime)
+                except ValueError:
+                    pass
+
+            queryset = queryset.filter(contentType=content_type)
+
+            if category:
+                queryset = queryset.filter(category=category)
+
+            if visibility:
+                queryset = queryset.filter(visibility=visibility)
+
+            if status_filter and not is_trash_status_filter(status_filter):
+                queryset = queryset.filter(status=status_filter)
+
+            if search:
+                if search_type == 'title':
+                    queryset = queryset.filter(
+                        Q(title__icontains=search) | Q(subtitle__icontains=search)
+                    )
+                elif search_type == 'speaker':
+                    queryset = queryset.filter(Q(speaker__icontains=search))
+                elif search_type == 'keyword':
+                    queryset = queryset.filter(tags__icontains=search)
+                else:
+                    queryset = queryset.filter(
+                        Q(title__icontains=search)
+                        | Q(subtitle__icontains=search)
+                        | Q(speaker__icontains=search)
+                        | Q(tags__icontains=search)
+                    )
+
+            if sort == 'viewCount':
+                queryset = queryset.order_by('-viewCount', '-createdAt')
+            elif sort == 'rating':
+                queryset = queryset.order_by('-rating', '-createdAt')
+            else:
+                queryset = queryset.order_by('-createdAt')
+
+            rows = list(queryset.only(
+                'id',
+                'contentType',
+                'title',
+                'subtitle',
+                'category',
+                'speaker',
+                'visibility',
+                'rating',
+                'viewCount',
+                'commentCount',
+                'bookmarkCount',
+                'createdAt',
+            ))
+            stats = video_seminar_question_answer_pairs(rows)
+
+            wb = Workbook()
+            ws = wb.active
+            ws.title = content_type[:31]
+            ws.append(list(self._HEADERS))
+
+            for v in rows:
+                answered_q, total_q = stats.get(v.id, (0, 0))
+                rating_cell = '' if v.rating is None else f'{float(v.rating):.1f}'
+                ws.append(
+                    [
+                        v.title or '',
+                        (v.subtitle or '').strip(),
+                        category_label(v.category),
+                        (v.speaker or '').strip(),
+                        category_label(v.visibility),
+                        rating_cell,
+                        int(v.viewCount or 0),
+                        int(v.commentCount or 0),
+                        0,
+                        f'{answered_q}/{total_q}',
+                        int(v.bookmarkCount or 0),
+                        format_excel_datetime(v.createdAt),
+                    ]
+                )
+
+            prefix = 'videos' if content_type == 'video' else 'seminars'
+            return xlsx_http_response(wb, prefix)
+
+        except Exception as e:
+            logger.error(f'비디오/세미나 엑셀 다운로드 실패: {e}', exc_info=True)
+            return Response(
+                create_error_response(f'엑셀 다운로드 실패: {str(e)}'),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
@@ -465,6 +622,10 @@ class VideoCreateView(APIView):
                 )
             
             validated_data = serializer.validated_data.copy()
+            validated_data['publishedAt'] = published_at_for_create(
+                status=validated_data.get('status'),
+                scheduled_at=validated_data.get('scheduledAt'),
+            )
             video = Video.objects.create(**validated_data)
             
             # 썸네일이 base64인 경우 S3에 업로드
@@ -589,13 +750,21 @@ class VideoBatchStatusView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # 각 비디오의 상태 변경
+            # 각 비디오의 상태 변경 (발행일시 동기화)
             updated_count = 0
+            now = timezone.now()
             for video_id in ids:
                 try:
                     video = Video.objects.get(id=video_id, deletedAt__isnull=True)
+                    old = video.status
                     video.status = new_status
-                    video.save(update_fields=['status'])
+                    if new_status == STATUS_PUBLISHED:
+                        if old != STATUS_PUBLISHED or not video.publishedAt:
+                            video.publishedAt = now
+                    elif new_status == STATUS_SCHEDULED:
+                        video.publishedAt = video.scheduledAt
+                    video.updatedAt = now
+                    video.save(update_fields=['status', 'publishedAt', 'updatedAt'])
                     updated_count += 1
                 except Video.DoesNotExist:
                     continue

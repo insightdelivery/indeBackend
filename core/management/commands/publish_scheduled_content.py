@@ -68,14 +68,27 @@ class Command(BaseCommand):
 
         video_ids = [r[0] for r in video_rows]
         with transaction.atomic():
-            n_art = Article.objects.filter(pk__in=article_ids).update(
-                status=STATUS_PUBLISHED,
-                updatedAt=now,
-            )
-            n_vid = Video.objects.filter(pk__in=video_ids).update(
-                status=STATUS_PUBLISHED,
-                updatedAt=now,
-            )
+            articles_to_save = list(Article.objects.filter(pk__in=article_ids))
+            for a in articles_to_save:
+                a.status = STATUS_PUBLISHED
+                a.publishedAt = a.scheduledAt or now
+                a.updatedAt = now
+            n_art = len(articles_to_save)
+            if n_art:
+                Article.objects.bulk_update(
+                    articles_to_save, ['status', 'publishedAt', 'updatedAt']
+                )
+
+            videos_to_save = list(Video.objects.filter(pk__in=video_ids))
+            for v in videos_to_save:
+                v.status = STATUS_PUBLISHED
+                v.publishedAt = v.scheduledAt or now
+                v.updatedAt = now
+            n_vid = len(videos_to_save)
+            if n_vid:
+                Video.objects.bulk_update(
+                    videos_to_save, ['status', 'publishedAt', 'updatedAt']
+                )
         self.stdout.write(
             self.style.SUCCESS(
                 f"완료: article {n_art}행, video {n_vid}행을 공개(SYS26209B021)로 갱신했습니다."

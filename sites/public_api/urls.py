@@ -46,6 +46,7 @@ from sites.public_api.homepage_doc_views import PublicHomepageDocDetailView
 from sites.public_api.site_visit_views import SiteVisitRecordView
 from sites.public_api.newsletter_views import NewsletterSubscribeView
 from sites.public_api.curation_views import PublicCurationListView
+from sites.public_api.content_author_public_views import PublicContentAuthorProfileView
 from sites.public_api.library_useractivity_views import (
     LibraryUserActivityView,
     LibraryUserActivityShare,
@@ -166,6 +167,8 @@ urlpatterns = [
     # 공개 아티클 목록 (frontend_www)
     path('api/homepage-docs/<str:doc_type>', PublicHomepageDocDetailView.as_view(), name='public_homepage_doc_detail'),
     path('api/homepage-docs/<str:doc_type>/', PublicHomepageDocDetailView.as_view(), name='public_homepage_doc_detail_slash'),
+    path('api/content-author/profile', PublicContentAuthorProfileView.as_view()),
+    path('api/content-author/profile/', PublicContentAuthorProfileView.as_view()),
     path('api/articles/', include('sites.public_api.article_urls')),
     path('api/articles', include('sites.public_api.article_urls')),
     path('api/videos/', include('sites.public_api.video_urls')),

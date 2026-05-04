@@ -3,6 +3,7 @@
 """
 from rest_framework import serializers
 from sites.admin_api.video.models import Video
+from sites.admin_api.content_publish_dates import apply_published_at_on_content_update
 from sites.admin_api.video.source_type_utils import (
     SOURCE_FILE_UPLOAD,
     SOURCE_VIMEO,
@@ -72,6 +73,7 @@ class VideoSerializer(serializers.ModelSerializer):
             'questions',
             'attachments',
             'scheduledAt',
+            'publishedAt',
             'deletedAt',
             'deletedBy',
             'createdAt',
@@ -85,6 +87,7 @@ class VideoSerializer(serializers.ModelSerializer):
             'bookmarkCount',
             'createdAt',
             'updatedAt',
+            'publishedAt',
         ]
 
     def get_displayId(self, obj):
@@ -167,6 +170,7 @@ class VideoListSerializer(serializers.ModelSerializer):
             'commentCount',
             'bookmarkCount',
             'scheduledAt',
+            'publishedAt',
             'deletedAt',
             'deletedBy',
             'createdAt',
@@ -180,6 +184,7 @@ class VideoListSerializer(serializers.ModelSerializer):
             'bookmarkCount',
             'createdAt',
             'updatedAt',
+            'publishedAt',
         ]
 
     def get_displayId(self, obj):
@@ -459,3 +464,12 @@ class VideoUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'videoUrl': 'URL이 선택한 소스(Vimeo/YouTube)와 일치하지 않습니다.'})
         attrs['videoUrl'] = merged_url
         return attrs
+
+    def update(self, instance, validated_data):
+        apply_published_at_on_content_update(instance, validated_data)
+        published_at = validated_data.pop('publishedAt', serializers.empty)
+        instance = super().update(instance, validated_data)
+        if published_at is not serializers.empty:
+            instance.publishedAt = published_at
+            instance.save(update_fields=['publishedAt'])
+        return instance

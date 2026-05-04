@@ -30,6 +30,7 @@ class ContentAuthor(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE, verbose_name='상태')
     # adminMemberShip 테이블의 고유 코드(memberShipSid). 연결 안 하면 null.
     member_ship_sid = models.CharField(max_length=15, null=True, blank=True, verbose_name='연결 관리자 SID')
+    editor_intro = models.TextField(blank=True, default='', verbose_name='에디터 소개')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성 일시')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정 일시')
 

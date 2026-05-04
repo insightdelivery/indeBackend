@@ -22,7 +22,7 @@ class ContentAuthorListSerializer(serializers.ModelSerializer):
         model = ContentAuthor
         fields = [
             'author_id', 'name', 'profile_image', 'role', 'status',
-            'member_ship_sid', 'created_at', 'updated_at', 'content_types',
+            'member_ship_sid', 'editor_intro', 'created_at', 'updated_at', 'content_types',
         ]
 
     def get_content_types(self, obj):
@@ -37,7 +37,7 @@ class ContentAuthorDetailSerializer(serializers.ModelSerializer):
         model = ContentAuthor
         fields = [
             'author_id', 'name', 'profile_image', 'role', 'status',
-            'member_ship_sid', 'created_at', 'updated_at', 'content_types',
+            'member_ship_sid', 'editor_intro', 'created_at', 'updated_at', 'content_types',
         ]
 
 
@@ -48,6 +48,7 @@ class ContentAuthorCreateSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=ContentAuthor.ROLE_CHOICES, default=ContentAuthor.ROLE_EDITOR)
     status = serializers.ChoiceField(choices=ContentAuthor.STATUS_CHOICES, default=ContentAuthor.STATUS_ACTIVE)
     member_ship_sid = serializers.CharField(max_length=15, required=False, allow_blank=True, allow_null=True)
+    editor_intro = serializers.CharField(required=False, allow_blank=True, default='')
     content_types = serializers.ListField(
         child=serializers.ChoiceField(choices=ContentAuthorContentType.CONTENT_TYPE_CHOICES),
         required=False,
@@ -67,6 +68,7 @@ class ContentAuthorUpdateSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=ContentAuthor.ROLE_CHOICES, required=False)
     status = serializers.ChoiceField(choices=ContentAuthor.STATUS_CHOICES, required=False)
     member_ship_sid = serializers.CharField(max_length=15, required=False, allow_blank=True, allow_null=True)
+    editor_intro = serializers.CharField(required=False, allow_blank=True)
     content_types = serializers.ListField(
         child=serializers.ChoiceField(choices=ContentAuthorContentType.CONTENT_TYPE_CHOICES),
         required=False,

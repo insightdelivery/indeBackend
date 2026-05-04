@@ -6,6 +6,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
+from django.utils import timezone
+from openpyxl import Workbook
 
 from apps.content_question.article_list_annotations import annotate_article_question_counts
 from django.core.paginator import Paginator
@@ -14,7 +16,15 @@ import logging
 
 from sites.admin_api.articles.models import Article
 from sites.admin_api.content_author.models import ContentAuthor
-from sites.admin_api.content_publish_syscodes import ARTICLE_STATUS_BATCH_ALLOWED, is_trash_status_filter
+from sites.admin_api.content_publish_syscodes import (
+    ARTICLE_STATUS_BATCH_ALLOWED,
+    STATUS_PUBLISHED,
+    STATUS_SCHEDULED,
+    is_trash_status_filter,
+)
+from sites.admin_api.content_publish_dates import published_at_for_create
+from sites.admin_api.admin_export_xlsx import format_excel_datetime, xlsx_http_response
+from sites.admin_api.curation.curation_resolve import category_label
 
 logger = logging.getLogger(__name__)
 from sites.admin_api.articles.serializers import (
@@ -510,7 +520,12 @@ class ArticleCreateView(APIView):
                 validated_data['thumbnail'] = None  # base64는 나중에 S3 업로드 후 저장
             else:
                 validated_data['thumbnail'] = None  # 없거나 URL은 허용하지 않음
-            
+
+            validated_data['publishedAt'] = published_at_for_create(
+                status=validated_data.get('status'),
+                scheduled_at=validated_data.get('scheduledAt'),
+            )
+
             # 아티클 생성
             article = Article.objects.create(**validated_data)
             logger.info(f"아티클 생성 완료. ID: {article.id}")
@@ -747,12 +762,21 @@ class ArticleBatchStatusView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # 상태 일괄 변경
+            # 상태 일괄 변경 (발행일시 동기화)
             articles = Article.objects.filter(id__in=ids, deletedAt__isnull=True)
             count = articles.count()
-            
-            articles.update(status=new_status)
-            
+            now = timezone.now()
+            for article in articles:
+                old = article.status
+                article.status = new_status
+                if new_status == STATUS_PUBLISHED:
+                    if old != STATUS_PUBLISHED or not article.publishedAt:
+                        article.publishedAt = now
+                elif new_status == STATUS_SCHEDULED:
+                    article.publishedAt = article.scheduledAt
+                article.updatedAt = now
+                article.save(update_fields=['status', 'publishedAt', 'updatedAt'])
+
             return Response(
                 create_success_response(
                     {'message': f'{count}개의 아티클 상태가 변경되었습니다.', 'count': count},
@@ -860,32 +884,47 @@ class ArticleExportView(APIView):
     authentication_classes = [AdminJWTAuthentication]
     permission_classes = [IsAuthenticated, MenuPermission]
     menu_code = MenuCodes.ARTICLE
-    
+
+    _HEADERS = (
+        '제목',
+        '부제',
+        '카테고리',
+        '작성자(에디터)',
+        '공개범위',
+        '별점',
+        '조회수',
+        '댓글수',
+        '하이라이트 수',
+        '질문(답변/전체)수',
+        '북마크수',
+        '등록일',
+    )
+
     def get(self, request):
         """
-        아티클 엑셀 다운로드
-        Query Parameters: 목록 조회와 동일한 필터링 파라미터 지원
+        아티클 엑셀 다운로드 (.xlsx)
+        Query Parameters: 목록 조회(ArticleListView)와 동일한 필터링
         """
         try:
-            # 쿼리 파라미터 파싱 (목록 조회와 동일)
             start_date = request.query_params.get('startDate')
             end_date = request.query_params.get('endDate')
             category = request.query_params.get('category')
             visibility = request.query_params.get('visibility')
             status_filter = request.query_params.get('status')
             search = request.query_params.get('search')
-            
-            # 기본 쿼리셋 (삭제되지 않은 항목만)
-            queryset = Article.objects.filter(deletedAt__isnull=True)
-            
-            # 필터링 (목록 조회와 동일한 로직)
+
+            if is_trash_status_filter(status_filter):
+                queryset = Article.objects.filter(deletedAt__isnull=False)
+            else:
+                queryset = Article.objects.filter(deletedAt__isnull=True)
+
             if start_date:
                 try:
                     start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
                     queryset = queryset.filter(createdAt__gte=start_datetime)
                 except ValueError:
                     pass
-            
+
             if end_date:
                 try:
                     end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
@@ -893,50 +932,57 @@ class ArticleExportView(APIView):
                     queryset = queryset.filter(createdAt__lte=end_datetime)
                 except ValueError:
                     pass
-            
+
             if category:
                 queryset = queryset.filter(category=category)
-            
+
             if visibility:
                 queryset = queryset.filter(visibility=visibility)
-            
-            if status_filter:
+
+            if status_filter and not is_trash_status_filter(status_filter):
                 queryset = queryset.filter(status=status_filter)
-            
+
             if search:
                 queryset = queryset.filter(
-                    Q(title__icontains=search) |
-                    Q(content__icontains=search) |
-                    Q(author__icontains=search) |
-                    Q(subtitle__icontains=search)
+                    Q(title__icontains=search)
+                    | Q(content__icontains=search)
+                    | Q(author__icontains=search)
+                    | Q(subtitle__icontains=search)
                 )
-            
-            queryset = annotate_article_question_counts(queryset)
 
-            queryset = queryset.order_by('-createdAt')
+            queryset = annotate_article_question_counts(queryset).order_by('-createdAt')
 
-            # 시리얼라이저
-            serializer = ArticleListSerializer(queryset, many=True)
-            articles_data = serializer.data
-            
-            # 각 아티클의 썸네일을 Presigned URL로 변환
-            for article_data in articles_data:
-                if article_data.get('thumbnail'):
-                    article_data['thumbnail'] = get_presigned_thumbnail_url(
-                        article_data['thumbnail'], 
-                        expires_in=3600
-                    )
-            
-            # 엑셀 다운로드는 프론트엔드에서 처리하거나 별도 라이브러리 필요
-            # 여기서는 JSON 형식으로 반환 (프론트엔드에서 엑셀 변환)
-            return Response(
-                create_success_response(articles_data, '엑셀 다운로드 데이터 조회 성공'),
-                status=status.HTTP_200_OK
-            )
-            
+            wb = Workbook()
+            ws = wb.active
+            ws.title = 'articles'
+            ws.append(list(self._HEADERS))
+
+            for a in queryset.iterator(chunk_size=500):
+                total_q = int(getattr(a, 'applied_question_count', 0) or 0)
+                answered_q = int(getattr(a, 'answered_question_count', 0) or 0)
+                rating_cell = '' if a.rating is None else f'{float(a.rating):.1f}'
+                ws.append(
+                    [
+                        a.title or '',
+                        (a.subtitle or '').strip(),
+                        category_label(a.category),
+                        (a.author or '').strip(),
+                        category_label(a.visibility),
+                        rating_cell,
+                        int(a.viewCount or 0),
+                        int(a.commentCount or 0),
+                        int(a.highlightCount or 0),
+                        f'{answered_q}/{total_q}',
+                        int(a.bookmarkCount or 0),
+                        format_excel_datetime(a.createdAt),
+                    ]
+                )
+
+            return xlsx_http_response(wb, 'articles')
+
         except Exception as e:
             return Response(
                 create_error_response(f'엑셀 다운로드 실패: {str(e)}'),
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
