@@ -6,8 +6,11 @@ from __future__ import annotations
 import re
 
 from core.models import SysCodeManager
+from core.s3_storage import get_s3_storage
 from sites.admin_api.articles.models import Article
+from sites.admin_api.articles.utils import get_presigned_thumbnail_url as presign_article_thumbnail
 from sites.admin_api.video.models import Video
+from sites.admin_api.video.utils import get_presigned_thumbnail_url as presign_video_thumbnail
 
 from .models import CurationItem
 
@@ -79,14 +82,41 @@ def effective_display_title(custom_title: str | None, original_title: str) -> st
     return t if t else (original_title or '')
 
 
+def _presign_curation_thumbnail(raw: str | None, content_type: str) -> str:
+    """
+    메인 큐레이션 카드용 썸네일 — 공개 article/video API와 동일하게 S3는 presigned URL로 내려준다.
+    DB에 객체 키만 있는 경우(article/…, video/…)는 키로 직접 presign.
+    """
+    if not raw or not str(raw).strip():
+        return ''
+    u = str(raw).strip()
+    if u.startswith('data:image'):
+        return u
+    if u.startswith('article/') or u.startswith('video/'):
+        try:
+            signed = get_s3_storage().get_file_url(u, expires_in=3600, force_presigned=True)
+            return (signed or u).strip()
+        except Exception:
+            return u
+    if content_type == CurationItem.ContentType.ARTICLE:
+        out = presign_article_thumbnail(u, expires_in=3600)
+    elif content_type in (CurationItem.ContentType.VIDEO, CurationItem.ContentType.SEMINAR):
+        out = presign_video_thumbnail(u, expires_in=3600)
+    else:
+        out = None
+    return ((out or u) or '').strip()
+
+
 def build_public_card(item: CurationItem, resolved: dict) -> dict:
     """메인 §10 카드 필드. id는 curation_item PK(클라이언트 key용)."""
     orig_title = resolved.get('displayTitle') or ''
     title = effective_display_title(item.custom_title, orig_title)
+    raw_thumb = resolved.get('thumbnail') or ''
+    thumb = _presign_curation_thumbnail(raw_thumb, item.content_type)
     return {
         'id': item.id,
         'title': title,
-        'thumbnail': resolved.get('thumbnail') or '',
+        'thumbnail': thumb,
         'categoryName': resolved.get('categoryName') or '',
         'summary': resolved.get('summary') or '',
         'contentType': item.content_type,
