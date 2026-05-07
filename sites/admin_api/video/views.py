@@ -24,6 +24,7 @@ from sites.admin_api.content_publish_dates import published_at_for_create
 from sites.admin_api.admin_export_xlsx import format_excel_datetime, xlsx_http_response
 from sites.admin_api.curation.curation_resolve import category_label
 from apps.content_question.video_export_stats import video_seminar_question_answer_pairs
+from apps.content_question.video_list_annotations import annotate_video_question_counts
 from sites.admin_api.video.serializers import (
     VideoSerializer,
     VideoListSerializer,
@@ -45,6 +46,43 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.core.files.uploadedfile import UploadedFile
 
 logger = logging.getLogger(__name__)
+
+VIDEO_LIST_SORT_FIELDS = {
+    "createdAt": "createdAt",
+    "viewCount": "viewCount",
+    "rating": "rating",
+    "commentCount": "commentCount",
+    "answeredQuestionCount": "answered_question_count",
+    "bookmarkCount": "bookmarkCount",
+    "publishedAt": "publishedAt",
+}
+
+
+def apply_video_list_sort(queryset, sort_by, sort_order):
+    """
+    annotate_video_question_counts 적용 후 호출.
+    Query: sortBy (camelCase), sortOrder (asc|desc). 기본: createdAt desc.
+    레거시 sort=viewCount|rating|createdAt 만 넘기면 sortBy로 간주.
+    """
+    sort_by = (sort_by or "createdAt").strip()
+    sort_order = (sort_order or "desc").strip().lower()
+    if sort_order not in ("asc", "desc"):
+        sort_order = "desc"
+    field = VIDEO_LIST_SORT_FIELDS.get(sort_by, "createdAt")
+    desc = sort_order == "desc"
+    tie = ("-id",) if desc else ("id",)
+
+    if field == "rating":
+        ord_expr = F("rating").desc(nulls_last=True) if desc else F("rating").asc(nulls_last=True)
+        return queryset.order_by(ord_expr, *tie)
+    if field == "publishedAt":
+        ord_expr = (
+            F("publishedAt").desc(nulls_last=True) if desc else F("publishedAt").asc(nulls_last=True)
+        )
+        return queryset.order_by(ord_expr, *tie)
+
+    prefix = "-" if desc else ""
+    return queryset.order_by(f"{prefix}{field}", *tie)
 
 
 def _admin_client_ip(request):
@@ -78,7 +116,10 @@ class VideoListView(APIView):
         - status: 상태 (sysCodeSid, 'deleted' 포함)
         - search: 검색어 (제목, 출연자, 키워드)
         - searchType: 검색 타입 (title, speaker, keyword)
-        - sort: 정렬 (createdAt, viewCount, rating 만 허용)
+        - sortBy: 정렬 필드 (createdAt, viewCount, rating, commentCount,
+          answeredQuestionCount, bookmarkCount, publishedAt)
+        - sortOrder: asc | desc (기본 desc)
+        - sort: 레거시 — sortBy 없을 때만 사용 (createdAt, viewCount, rating)
         """
         try:
             # 쿼리 파라미터 파싱
@@ -92,7 +133,13 @@ class VideoListView(APIView):
             status_filter = request.query_params.get('status')
             search = request.query_params.get('search')
             search_type = request.query_params.get('searchType', 'all')  # all, title, speaker, keyword
-            sort = request.query_params.get('sort', 'createdAt')  # createdAt, viewCount, rating
+            sort_by = (request.query_params.get('sortBy') or '').strip()
+            sort_order = request.query_params.get('sortOrder')
+            legacy_sort = request.query_params.get('sort', 'createdAt')
+            if not sort_by and legacy_sort in ('createdAt', 'viewCount', 'rating'):
+                sort_by = legacy_sort
+            if not sort_by:
+                sort_by = 'createdAt'
             
             # 기본 쿼리셋
             if is_trash_status_filter(status_filter):
@@ -151,15 +198,9 @@ class VideoListView(APIView):
                         Q(tags__icontains=search)
                     )
             
-            # 정렬
-            if sort == 'viewCount':
-                queryset = queryset.order_by('-viewCount', '-createdAt')
-            elif sort == 'rating':
-                queryset = queryset.order_by('-rating', '-createdAt')
-            else:
-                # createdAt (기본값) — shareCount 등 미허용 값은 최신순과 동일 처리
-                queryset = queryset.order_by('-createdAt')
-            
+            queryset = annotate_video_question_counts(queryset)
+            queryset = apply_video_list_sort(queryset, sort_by, sort_order)
+
             # 페이지네이션
             paginator = Paginator(queryset, page_size)
             page_obj = paginator.get_page(page)
@@ -221,7 +262,6 @@ class VideoExportView(APIView):
         '별점',
         '조회수',
         '댓글수',
-        '하이라이트 수',
         '질문(답변/전체)수',
         '북마크수',
         '등록일',
@@ -239,7 +279,13 @@ class VideoExportView(APIView):
             status_filter = request.query_params.get('status')
             search = request.query_params.get('search')
             search_type = (request.query_params.get('searchType') or 'all').strip()
-            sort = (request.query_params.get('sort') or 'createdAt').strip()
+            sort_by = (request.query_params.get('sortBy') or '').strip()
+            sort_order = request.query_params.get('sortOrder')
+            legacy_sort = request.query_params.get('sort', 'createdAt')
+            if not sort_by and legacy_sort in ('createdAt', 'viewCount', 'rating'):
+                sort_by = legacy_sort
+            if not sort_by:
+                sort_by = 'createdAt'
 
             if is_trash_status_filter(status_filter):
                 queryset = Video.objects.filter(deletedAt__isnull=False)
@@ -289,12 +335,8 @@ class VideoExportView(APIView):
                         | Q(tags__icontains=search)
                     )
 
-            if sort == 'viewCount':
-                queryset = queryset.order_by('-viewCount', '-createdAt')
-            elif sort == 'rating':
-                queryset = queryset.order_by('-rating', '-createdAt')
-            else:
-                queryset = queryset.order_by('-createdAt')
+            queryset = annotate_video_question_counts(queryset)
+            queryset = apply_video_list_sort(queryset, sort_by, sort_order)
 
             rows = list(queryset.only(
                 'id',
@@ -330,7 +372,6 @@ class VideoExportView(APIView):
                         rating_cell,
                         int(v.viewCount or 0),
                         int(v.commentCount or 0),
-                        0,
                         f'{answered_q}/{total_q}',
                         int(v.bookmarkCount or 0),
                         format_excel_datetime(v.createdAt),

@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Q
+from django.db.models import Q, F
 from django.utils import timezone
 from openpyxl import Workbook
 
@@ -61,6 +61,43 @@ def author_affiliation_for_content_author(content_author):
     return None
 
 
+ARTICLE_LIST_SORT_FIELDS = {
+    'createdAt': 'createdAt',
+    'viewCount': 'viewCount',
+    'rating': 'rating',
+    'commentCount': 'commentCount',
+    'highlightCount': 'highlightCount',
+    'answeredQuestionCount': 'answered_question_count',
+    'bookmarkCount': 'bookmarkCount',
+    'publishedAt': 'publishedAt',
+}
+
+
+def apply_article_list_sort(queryset, sort_by, sort_order):
+    """
+    관리자 아티클 목록·엑셀 공통 정렬.
+    annotate_article_question_counts 적용 후 호출할 것.
+    Query: sortBy (camelCase), sortOrder (asc|desc). 기본: createdAt desc.
+    """
+    sort_by = (sort_by or 'createdAt').strip()
+    sort_order = (sort_order or 'desc').strip().lower()
+    if sort_order not in ('asc', 'desc'):
+        sort_order = 'desc'
+    field = ARTICLE_LIST_SORT_FIELDS.get(sort_by, 'createdAt')
+    desc = sort_order == 'desc'
+    tie = ('-id',) if desc else ('id',)
+
+    if field == 'rating':
+        ord_expr = F('rating').desc(nulls_last=True) if desc else F('rating').asc(nulls_last=True)
+        return queryset.order_by(ord_expr, *tie)
+    if field == 'publishedAt':
+        ord_expr = F('publishedAt').desc(nulls_last=True) if desc else F('publishedAt').asc(nulls_last=True)
+        return queryset.order_by(ord_expr, *tie)
+
+    prefix = '-' if desc else ''
+    return queryset.order_by(f'{prefix}{field}', *tie)
+
+
 class ArticleListView(APIView):
     """
     아티클 목록 조회 API
@@ -83,6 +120,9 @@ class ArticleListView(APIView):
         - visibility: 공개 범위 (sysCodeSid)
         - status: 발행 상태 (sysCodeSid)
         - search: 검색어 (제목, 본문, 작성자)
+        - sortBy: 정렬 필드 (viewCount, rating, commentCount, highlightCount,
+          answeredQuestionCount, bookmarkCount, publishedAt, createdAt)
+        - sortOrder: asc | desc (기본 desc; createdAt 기본도 desc)
         """
         try:
             # 쿼리 파라미터 파싱
@@ -94,6 +134,8 @@ class ArticleListView(APIView):
             visibility = request.query_params.get('visibility')
             status_filter = request.query_params.get('status')
             search = request.query_params.get('search')
+            sort_by = request.query_params.get('sortBy')
+            sort_order = request.query_params.get('sortOrder')
             
             # 기본 쿼리셋 (휴지통: status=삭제 SID 또는 레거시 'deleted' 쿼리)
             if is_trash_status_filter(status_filter):
@@ -140,9 +182,7 @@ class ArticleListView(APIView):
                 )
             
             queryset = annotate_article_question_counts(queryset)
-
-            # 정렬 (최신순)
-            queryset = queryset.order_by('-createdAt')
+            queryset = apply_article_list_sort(queryset, sort_by, sort_order)
 
             # 페이지네이션
             paginator = Paginator(queryset, page_size)
@@ -912,6 +952,8 @@ class ArticleExportView(APIView):
             visibility = request.query_params.get('visibility')
             status_filter = request.query_params.get('status')
             search = request.query_params.get('search')
+            sort_by = request.query_params.get('sortBy')
+            sort_order = request.query_params.get('sortOrder')
 
             if is_trash_status_filter(status_filter):
                 queryset = Article.objects.filter(deletedAt__isnull=False)
@@ -950,7 +992,8 @@ class ArticleExportView(APIView):
                     | Q(subtitle__icontains=search)
                 )
 
-            queryset = annotate_article_question_counts(queryset).order_by('-createdAt')
+            queryset = annotate_article_question_counts(queryset)
+            queryset = apply_article_list_sort(queryset, sort_by, sort_order)
 
             wb = Workbook()
             ws = wb.active

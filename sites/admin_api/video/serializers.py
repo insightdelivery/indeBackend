@@ -144,6 +144,18 @@ class VideoListSerializer(serializers.ModelSerializer):
     """비디오 목록 시리얼라이저 (간소화된 필드)"""
 
     displayId = serializers.SerializerMethodField()
+    questionCount = serializers.SerializerMethodField()
+    answeredQuestionCount = serializers.SerializerMethodField()
+
+    def get_questionCount(self, obj):
+        if hasattr(obj, 'applied_question_count'):
+            return int(obj.applied_question_count)
+        return 0
+
+    def get_answeredQuestionCount(self, obj):
+        if hasattr(obj, 'answered_question_count'):
+            return int(obj.answered_question_count)
+        return 0
 
     class Meta:
         model = Video
@@ -169,6 +181,8 @@ class VideoListSerializer(serializers.ModelSerializer):
             'rating',
             'commentCount',
             'bookmarkCount',
+            'questionCount',
+            'answeredQuestionCount',
             'scheduledAt',
             'publishedAt',
             'deletedAt',
@@ -182,6 +196,8 @@ class VideoListSerializer(serializers.ModelSerializer):
             'viewCount',
             'commentCount',
             'bookmarkCount',
+            'questionCount',
+            'answeredQuestionCount',
             'createdAt',
             'updatedAt',
             'publishedAt',

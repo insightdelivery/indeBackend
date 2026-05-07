@@ -1,5 +1,5 @@
 """
-content_comments(깊이 1)·article_highlight 집계 → Article.commentCount·highlightCount·Video.commentCount 백필.
+content_comments(깊이 1)·article_highlight 집계 → Article.commentCount·highlightCount·Video/세미나 commentCount 백필.
 
   python manage.py backfill_comment_and_highlight_counts
   python manage.py backfill_comment_and_highlight_counts --dry-run
