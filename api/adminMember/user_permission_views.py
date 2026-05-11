@@ -84,12 +84,12 @@ class UserPermissionReapplyTemplateView(APIView):
 class AdminMenuCatalogView(APIView):
     """
     GET: ADMIN_MENU_ROOT 하위 sysCodeManager 메뉴 목록 (코드·표시명).
-    프론트 메뉴권한 UI·라벨 해석의 단일 소스.
+    프론트 레이아웃·라벨 해석의 단일 소스 — 로그인한 관리자 전원 읽기 허용(메뉴별 user_permissions와 무관).
     """
 
     authentication_classes = [AdminJWTAuthentication]
     permission_classes = [IsAuthenticated, MenuPermission]
-    menu_code = MenuCodes.MENU_PERMISSION
+    menu_code = None
 
     def get(self, request):
         items = fetch_admin_menu_catalog()

@@ -21,10 +21,11 @@ class SystemCodeTreeView(APIView):
     """
     시스템 코드 트리 조회 API
     GET /sysCodeManage/syscode/code_tree/
+    로그인한 관리자 전원 읽기 허용(코드관리 메뉴 권한과 무관; systemmanage/syscode/code_tree와 동일 정책).
     """
     authentication_classes = [AdminJWTAuthentication]
     permission_classes = [IsAuthenticated, MenuPermission]
-    menu_code = MenuCodes.CODE_MANAGE
+    menu_code = None
     
     def get(self, request):
         """

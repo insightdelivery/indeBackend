@@ -1,7 +1,7 @@
 """
 관리자 큐레이션 API — curationContentPlan.md §3·§4
 한 큐레이션(Curation)에 여러 콘텐츠(CurationItem) 포함.
-권한: MenuCodes.SEMINAR
+권한: MenuCodes.CURATION (SYS26511B001)
 """
 from __future__ import annotations
 
@@ -176,7 +176,7 @@ class CurationPreviewView(APIView):
 
     authentication_classes = [AdminJWTAuthentication]
     permission_classes = [IsAuthenticated, MenuPermission]
-    menu_code = MenuCodes.SEMINAR
+    menu_code = MenuCodes.CURATION
 
     def get(self, request):
         ct = (request.query_params.get('contentType') or '').strip().upper()
@@ -218,7 +218,7 @@ class CurationListCreateView(APIView):
 
     authentication_classes = [AdminJWTAuthentication]
     permission_classes = [IsAuthenticated, MenuPermission]
-    menu_code = MenuCodes.SEMINAR
+    menu_code = MenuCodes.CURATION
 
     def get(self, request):
         rows = Curation.objects.prefetch_related('items').all().order_by('-is_exposed', '-reg_datetime')
@@ -286,7 +286,7 @@ class CurationDetailView(APIView):
 
     authentication_classes = [AdminJWTAuthentication]
     permission_classes = [IsAuthenticated, MenuPermission]
-    menu_code = MenuCodes.SEMINAR
+    menu_code = MenuCodes.CURATION
 
     def get(self, request, pk):
         try:

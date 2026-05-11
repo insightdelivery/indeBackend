@@ -13,6 +13,8 @@ class MenuCodes:
     ARTICLE = "SYS26330B008"
     VIDEO = "SYS26330B009"
     SEMINAR = "SYS26330B010"
+    # 특집(큐레이션) — sysCodeManager 부모 SYS26330B006 하위에 동일 sid 행 필요
+    CURATION = "SYS26511B001"
     BOARD_PARENT = "SYS26330B016"
     NOTICE = "SYS26330B018"
     FAQ = "SYS26330B019"
