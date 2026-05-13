@@ -3,14 +3,15 @@ Dynamic OG Rendering for SNS crawlers.
 
 Nginx should proxy crawler requests for existing frontend detail URLs
 (`/article/detail?id=...`, `/video/detail?id=...`, `/seminar/detail?id=...`) to
-these Django views. Normal browsers can keep using the static export.
+these Django views. Because nginx already performs crawler detection, these
+views always return metadata HTML and never redirect back to the frontend.
 """
 import re
 from html import escape
 from urllib.parse import urlencode
 
 from django.conf import settings
-from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseBadRequest
 from django.views import View
 
 from sites.admin_api.articles.models import Article
@@ -20,29 +21,7 @@ from sites.admin_api.video.models import Video
 from sites.admin_api.video.utils import get_presigned_thumbnail_url as get_video_thumbnail_url
 
 
-BOT_USER_AGENT_KEYWORDS = (
-    "facebookexternalhit",
-    "facebot",
-    "twitterbot",
-    "slackbot",
-    "discordbot",
-    "kakaotalk",
-    "kakaostory",
-    "whatsapp",
-    "linkedinbot",
-    "telegrambot",
-    "pinterest",
-    "embedly",
-    "quora link preview",
-    "skypeuripreview",
-)
-
 DEFAULT_OG_IMAGE_PATH = "/indeOgLogo.jpeg?v=2"
-
-
-def is_sns_crawler(request) -> bool:
-    user_agent = (request.META.get("HTTP_USER_AGENT") or "").lower()
-    return any(keyword in user_agent for keyword in BOT_USER_AGENT_KEYWORDS)
 
 
 def public_origin(request) -> str:
@@ -136,10 +115,6 @@ def og_html(
 </html>"""
 
 
-def fallback_redirect(request, section: str, content_id: int):
-    return HttpResponseRedirect(detail_url(request, section, content_id))
-
-
 def content_id_from_request(request):
     raw = (request.GET.get("id") or "").strip()
     if not raw:
@@ -156,9 +131,6 @@ class ArticleOgDetailView(View):
         article_id = content_id_from_request(request)
         if not article_id:
             return HttpResponseBadRequest("Missing or invalid id")
-
-        if not is_sns_crawler(request):
-            return fallback_redirect(request, "article", article_id)
 
         article = (
             Article.objects.filter(id=article_id, deletedAt__isnull=True, status=STATUS_PUBLISHED)
@@ -187,9 +159,6 @@ class VideoOgDetailView(View):
         video_id = content_id_from_request(request)
         if not video_id:
             return HttpResponseBadRequest("Missing or invalid id")
-
-        if not is_sns_crawler(request):
-            return fallback_redirect(request, self.content_type, video_id)
 
         video = (
             Video.objects.filter(
