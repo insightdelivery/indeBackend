@@ -16,6 +16,19 @@ SITE_MAP = {
         "cors": ["https://www.inde.kr", "https://inde.kr", "https://dev.inde.kr", "http://dev.inde.kr"],
         "media_prefix": "public",
     },
+    # Dynamic OG Rendering: nginx가 SNS crawler만 Django로 프록시하면서 원 Host를 보존하는 경우.
+    "inde.kr": {
+        "slug": "public_api",
+        "urlconf": "sites.public_api.urls",
+        "cors": ["https://www.inde.kr", "https://inde.kr", "https://dev.inde.kr", "http://dev.inde.kr"],
+        "media_prefix": "public",
+    },
+    "www.inde.kr": {
+        "slug": "public_api",
+        "urlconf": "sites.public_api.urls",
+        "cors": ["https://www.inde.kr", "https://inde.kr", "https://dev.inde.kr", "http://dev.inde.kr"],
+        "media_prefix": "public",
+    },
     
     # 로컬 개발 환경: 포트별로 사이트 분리
     "localhost:8000": {

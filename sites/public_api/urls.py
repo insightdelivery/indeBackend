@@ -71,6 +71,11 @@ from sites.public_api.content_ranking_views import (
     LibraryRankingShareView,
     LibraryRankingWeeklyCrossView,
 )
+from sites.public_api.og_views import (
+    ArticleOgDetailView,
+    VideoOgDetailView,
+    SeminarOgDetailView,
+)
 
 
 class PingView(APIView):
@@ -86,6 +91,13 @@ class PingView(APIView):
 
 urlpatterns = [
     path('ping/', PingView.as_view(), name='public_api_ping'),
+    # Dynamic OG Rendering — nginx가 SNS crawler 요청만 기존 상세 URL로 public_api에 프록시.
+    path('article/detail', ArticleOgDetailView.as_view(), name='og_article_detail'),
+    path('article/detail/', ArticleOgDetailView.as_view(), name='og_article_detail_slash'),
+    path('video/detail', VideoOgDetailView.as_view(), name='og_video_detail'),
+    path('video/detail/', VideoOgDetailView.as_view(), name='og_video_detail_slash'),
+    path('seminar/detail', SeminarOgDetailView.as_view(), name='og_seminar_detail'),
+    path('seminar/detail/', SeminarOgDetailView.as_view(), name='og_seminar_detail_slash'),
     path('register/', RegisterView.as_view(), name='public_api_register'),
     path('register', RegisterView.as_view(), name='public_api_register_no_slash'),
     path('api/register/', RegisterView.as_view(), name='public_api_register_api'),

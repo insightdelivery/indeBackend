@@ -245,6 +245,15 @@ CSRF_TRUSTED_ORIGINS = _csrf_origins if _csrf_origins else [
 # OAuth/인증 메일 등 프론트 리다이렉트 베이스 URL
 PUBLIC_VERIFY_BASE_URL = (os.getenv("PUBLIC_VERIFY_BASE_URL") or "").strip().rstrip("/")
 
+# SNS crawler OG HTML의 canonical/og:url 생성용 WWW origin.
+# 예: https://inde.kr 또는 https://www.inde.kr
+PUBLIC_WWW_ORIGIN = (
+    os.getenv("PUBLIC_WWW_ORIGIN")
+    or os.getenv("NEXT_PUBLIC_SITE_ORIGIN")
+    or os.getenv("NEXT_PUBLIC_WWW_ORIGIN")
+    or "https://inde.kr"
+).strip().rstrip("/")
+
 # 1:1 문의 답변 메일 내 열람 추적 픽셀 (public_api 절대 URL, 예: https://api.inde.kr)
 INQUIRY_EMAIL_TRACK_BASE_URL = (os.getenv("INQUIRY_EMAIL_TRACK_BASE_URL") or "").strip().rstrip("/")
 

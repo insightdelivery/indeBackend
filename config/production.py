@@ -57,6 +57,13 @@ MEDIA_ROOT = os.getenv("MEDIA_ROOT", str(BASE_DIR / "media"))
 # ---- 5) 보안/프록시(nginx 뒤에 둘 때) ----
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
 
+PUBLIC_WWW_ORIGIN = (
+    os.getenv("PUBLIC_WWW_ORIGIN")
+    or os.getenv("NEXT_PUBLIC_SITE_ORIGIN")
+    or os.getenv("NEXT_PUBLIC_WWW_ORIGIN")
+    or PUBLIC_WWW_ORIGIN
+).strip().rstrip("/")
+
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
